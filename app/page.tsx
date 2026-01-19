@@ -9,14 +9,12 @@ import {
   ShoppingCart, DollarSign, Users, TrendingUp, Plus, Trash2, Edit2, Save, X, 
   Target, Lock, Loader2, LogOut, RefreshCcw, CheckSquare 
 } from "lucide-react";
-
 import { 
-  getFornecedores, saveFornecedor, deleteFornecedor, 
-  getCompras, saveCompra, deleteCompra, 
-  getChecklist, saveChecklistItem, restaurarFornecedoresPadrao 
+  getFornecedores, saveFornecedor, deleteFornecedor, getCompras, 
+  saveCompra, deleteCompra, getChecklist, saveChecklistItem, 
+  restaurarFornecedoresPadrao 
 } from "./actions";
 
-// --- INTERFACES ---
 interface Compra {
   id: string;
   data: string;
@@ -134,7 +132,7 @@ export default function Home() {
   };
 
   const handleRestaurarFornecedores = async () => {
-    if(!confirm("Isso irá cadastrar os fornecedores padrão (Delfa, Zanoti, etc) caso não existam. Continuar?")) return;
+    if(!confirm("Isso irá cadastrar os fornecedores padrão caso não existam. Continuar?")) return;
     setIsLoading(true);
     await restaurarFornecedoresPadrao();
     await carregarDadosDoBanco();
@@ -225,7 +223,7 @@ export default function Home() {
   };
 
   const handleRemoverFornecedor = async (id: string) => {
-    if (confirm("Deseja remover este fornecedor?")) {
+    if (confirm("Tem certeza que deseja remover este fornecedor?")) {
       setIsLoading(true);
       await deleteFornecedor(id);
       await carregarDadosDoBanco();
@@ -355,6 +353,7 @@ export default function Home() {
     });
     await carregarDadosDoBanco();
     setIsLoading(false);
+    
     alert("Compra criada na aba Lançamentos! Edite o valor lá.");
   };
 
@@ -373,12 +372,12 @@ export default function Home() {
           </div>
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">Usuário</label>
-              <input type="text" value={loginForm.usuario} onChange={e => setLoginForm({...loginForm, usuario: e.target.value})} className="w-full px-4 py-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-[#003366]" placeholder="Digite seu usuário" required />
+              <label className="block text-sm font-bold text-gray-900 mb-1">Usuário</label>
+              <input type="text" value={loginForm.usuario} onChange={e => setLoginForm({...loginForm, usuario: e.target.value})} className="w-full px-4 py-2 border rounded-lg text-black focus:ring-2 focus:ring-[#003366]" placeholder="Digite seu usuário" required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">Senha</label>
-              <input type="password" value={loginForm.senha} onChange={e => setLoginForm({...loginForm, senha: e.target.value})} className="w-full px-4 py-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-[#003366]" placeholder="Digite sua senha" required />
+              <label className="block text-sm font-bold text-gray-900 mb-1">Senha</label>
+              <input type="password" value={loginForm.senha} onChange={e => setLoginForm({...loginForm, senha: e.target.value})} className="w-full px-4 py-2 border rounded-lg text-black focus:ring-2 focus:ring-[#003366]" placeholder="Digite sua senha" required />
             </div>
             {loginError && <div className="text-red-600 text-sm bg-red-50 p-2 rounded border border-red-200">{loginError}</div>}
             <button type="submit" className="w-full py-3 bg-[#003366] text-white rounded-lg font-bold hover:bg-[#004080] transition">Entrar</button>
@@ -390,8 +389,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      
-      {/* HEADER */}
       <header className="bg-[#003366] text-white shadow-lg sticky top-0 z-20">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div>
@@ -408,7 +405,6 @@ export default function Home() {
                    </div>
                </div>
              </div>
-             {/* BOTÃO DE SAIR */}
              <button onClick={handleLogout} className="bg-red-600/80 hover:bg-red-600 p-2 rounded-lg text-white flex items-center gap-2 text-sm font-bold transition shadow-md">
                 <LogOut size={18} /> <span className="hidden sm:inline">Sair</span>
              </button>
@@ -417,7 +413,6 @@ export default function Home() {
         {isLoading && <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-300 overflow-hidden"><div className="h-full bg-yellow-400 animate-pulse w-1/2 mx-auto"></div></div>}
       </header>
 
-      {/* NAVEGAÇÃO */}
       <nav className="bg-white shadow-md border-b sticky top-[76px] z-10">
         <div className="container mx-auto px-4 flex gap-2 overflow-x-auto pb-1 pt-1">
           {[
@@ -429,7 +424,7 @@ export default function Home() {
             <button 
                 key={tab.id} 
                 onClick={() => setAbaAtiva(tab.id as Aba)} 
-                className={`py-3 px-4 font-medium capitalize border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${abaAtiva === tab.id ? 'border-[#003366] text-[#003366] bg-blue-50/50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                className={`py-3 px-4 font-bold capitalize border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${abaAtiva === tab.id ? 'border-[#003366] text-[#003366] bg-blue-50/50' : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'}`}
             >
               <tab.icon size={18}/> {tab.label}
             </button>
@@ -437,21 +432,19 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* ÁREA DE CONTEÚDO */}
       <main className="container mx-auto px-4 py-8 pb-20">
         
-        {/* === DASHBOARD === */}
         {abaAtiva === "dashboard" && (
           <div className="space-y-6">
             <div className="flex justify-between flex-wrap gap-4 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-               <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><TrendingUp size={24}/> Visão Geral</h2>
+               <h2 className="text-2xl font-bold text-black flex items-center gap-2"><TrendingUp size={24}/> Visão Geral</h2>
                <div className="flex gap-2">
-                 <select value={filtroTempo} onChange={e => setFiltroTempo(e.target.value as any)} className="border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]">
+                 <select value={filtroTempo} onChange={e => setFiltroTempo(e.target.value as any)} className="border p-2 rounded text-black font-medium focus:ring-2 focus:ring-[#003366]">
                     <option value="mensal">Mensal</option>
                     <option value="semestral">Semestral</option>
                     <option value="anual">Anual</option>
                  </select>
-                 <select value={filtroFornecedor} onChange={e => setFiltroFornecedor(e.target.value)} className="border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]">
+                 <select value={filtroFornecedor} onChange={e => setFiltroFornecedor(e.target.value)} className="border p-2 rounded text-black font-medium focus:ring-2 focus:ring-[#003366]">
                     <option value="todos">Todos Fornecedores</option>
                     {fornecedores.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}
                  </select>
@@ -459,23 +452,21 @@ export default function Home() {
             </div>
             
             <div className="grid md:grid-cols-2 gap-6">
-              {/* Ranking */}
               <div className="bg-white p-6 rounded-lg shadow h-[400px] border border-gray-100">
-                <h3 className="font-bold text-gray-700 mb-6 flex items-center gap-2 border-b pb-2">Ranking de Gastos</h3>
+                <h3 className="font-bold text-black mb-6 flex items-center gap-2 border-b pb-2">Ranking de Gastos</h3>
                 <ResponsiveContainer width="100%" height="85%">
                   <BarChart data={dadosRanking}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false}/>
-                    <XAxis dataKey="nome" tick={{fontSize: 11, fill: '#333'}} height={60} interval={0} angle={-30} textAnchor="end"/>
-                    <YAxis tick={{fontSize: 12, fill: '#333'}} />
-                    <Tooltip formatter={formatarValorTooltip} contentStyle={{ borderRadius: '8px', border: '1px solid #ddd' }} />
+                    <XAxis dataKey="nome" tick={{fontSize: 11, fill: '#000', fontWeight: 'bold'}} height={60} interval={0} angle={-30} textAnchor="end"/>
+                    <YAxis tick={{fontSize: 12, fill: '#000', fontWeight: 'bold'}} />
+                    <Tooltip formatter={formatarValorTooltip} contentStyle={{ borderRadius: '8px', border: '1px solid #000', color: '#000' }} itemStyle={{color: '#000'}} />
                     <Bar dataKey="total" fill="#003366" radius={[4, 4, 0, 0]} barSize={40} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* Pizza */}
               <div className="bg-white p-6 rounded-lg shadow h-[400px] border border-gray-100">
-                <h3 className="font-bold text-gray-700 mb-6 flex items-center gap-2 border-b pb-2">Distribuição (%)</h3>
+                <h3 className="font-bold text-black mb-6 flex items-center gap-2 border-b pb-2">Distribuição (%)</h3>
                 <ResponsiveContainer width="100%" height="85%">
                     <PieChart>
                       <Pie 
@@ -492,22 +483,21 @@ export default function Home() {
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={formatarValorTooltip} />
-                      <Legend wrapperStyle={{fontSize: '12px'}}/>
+                      <Tooltip formatter={formatarValorTooltip} contentStyle={{color: '#000', border: '1px solid #000'}} itemStyle={{color: '#000'}} />
+                      <Legend wrapperStyle={{fontSize: '12px', color: '#000', fontWeight: 'bold'}}/>
                     </PieChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* Evolução */}
               <div className="bg-white p-6 rounded-lg shadow h-[400px] border border-gray-100 md:col-span-2">
-                <h3 className="font-bold text-gray-700 mb-6 flex items-center gap-2 border-b pb-2">Evolução Temporal</h3>
+                <h3 className="font-bold text-black mb-6 flex items-center gap-2 border-b pb-2">Evolução Temporal</h3>
                 <ResponsiveContainer width="100%" height="85%">
                   <LineChart data={dadosEvolucao}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false}/>
-                    <XAxis dataKey="periodo" tick={{fontSize: 12, fill: '#333'}} />
-                    <YAxis tick={{fontSize: 12, fill: '#333'}} />
-                    <Tooltip formatter={formatarValorTooltip} />
-                    <Legend />
+                    <XAxis dataKey="periodo" tick={{fontSize: 12, fill: '#000', fontWeight: 'bold'}} />
+                    <YAxis tick={{fontSize: 12, fill: '#000', fontWeight: 'bold'}} />
+                    <Tooltip formatter={formatarValorTooltip} contentStyle={{color: '#000', border: '1px solid #000'}} itemStyle={{color: '#000'}} />
+                    <Legend wrapperStyle={{color: '#000', fontWeight: 'bold'}} />
                     <Line type="monotone" dataKey="total" stroke="#003366" strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -516,37 +506,36 @@ export default function Home() {
           </div>
         )}
 
-        {/* === LANÇAMENTOS === */}
         {abaAtiva === "lancamentos" && (
           <div className="space-y-6">
              <div className="bg-white p-6 rounded-lg shadow border border-gray-100">
-                <h3 className="font-bold text-gray-900 mb-6 text-lg flex items-center gap-2 border-b pb-2">
+                <h3 className="font-bold text-black mb-6 text-lg flex items-center gap-2 border-b pb-2">
                     {editandoCompra ? <Edit2 size={20}/> : <Plus size={20}/>}
                     {editandoCompra ? 'Editar Lançamento' : 'Novo Lançamento'}
                 </h3>
                 <form onSubmit={handleSalvarCompra} className="grid md:grid-cols-2 gap-6">
                    <div>
-                       <label className="block text-sm font-semibold text-gray-600 mb-1">Data</label>
-                       <input type="date" value={formCompra.data} onChange={e => setFormCompra({...formCompra, data: e.target.value})} className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]" required />
+                       <label className="block text-sm font-bold text-gray-800 mb-1">Data</label>
+                       <input type="date" value={formCompra.data} onChange={e => setFormCompra({...formCompra, data: e.target.value})} className="w-full border p-2 rounded text-black focus:ring-2 focus:ring-[#003366]" required />
                    </div>
                    <div>
-                       <label className="block text-sm font-semibold text-gray-600 mb-1">Fornecedor</label>
-                       <select value={formCompra.fornecedor} onChange={e => setFormCompra({...formCompra, fornecedor: e.target.value})} className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]" required>
+                       <label className="block text-sm font-bold text-gray-800 mb-1">Fornecedor</label>
+                       <select value={formCompra.fornecedor} onChange={e => setFormCompra({...formCompra, fornecedor: e.target.value})} className="w-full border p-2 rounded text-black focus:ring-2 focus:ring-[#003366]" required>
                           <option value="">Selecione...</option>
                           {fornecedores.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}
                        </select>
                    </div>
                    <div className="md:col-span-2">
-                       <label className="block text-sm font-semibold text-gray-600 mb-1">Descrição</label>
-                       <input type="text" value={formCompra.descricao} onChange={e => setFormCompra({...formCompra, descricao: e.target.value})} placeholder="Ex: Compra de matéria-prima" className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]" required />
+                       <label className="block text-sm font-bold text-gray-800 mb-1">Descrição</label>
+                       <input type="text" value={formCompra.descricao} onChange={e => setFormCompra({...formCompra, descricao: e.target.value})} placeholder="Ex: Compra de matéria-prima" className="w-full border p-2 rounded text-black focus:ring-2 focus:ring-[#003366]" required />
                    </div>
                    <div>
-                       <label className="block text-sm font-semibold text-gray-600 mb-1">Valor (R$)</label>
-                       <input type="number" step="0.01" value={formCompra.valor} onChange={e => setFormCompra({...formCompra, valor: e.target.value})} placeholder="0.00" className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]" required />
+                       <label className="block text-sm font-bold text-gray-800 mb-1">Valor (R$)</label>
+                       <input type="number" step="0.01" value={formCompra.valor} onChange={e => setFormCompra({...formCompra, valor: e.target.value})} placeholder="0.00" className="w-full border p-2 rounded text-black focus:ring-2 focus:ring-[#003366]" required />
                    </div>
                    <div>
-                       <label className="block text-sm font-semibold text-gray-600 mb-1">Pagamento</label>
-                       <select value={formCompra.condicaoPagamento} onChange={e => setFormCompra({...formCompra, condicaoPagamento: e.target.value})} className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]">
+                       <label className="block text-sm font-bold text-gray-800 mb-1">Pagamento</label>
+                       <select value={formCompra.condicaoPagamento} onChange={e => setFormCompra({...formCompra, condicaoPagamento: e.target.value})} className="w-full border p-2 rounded text-black focus:ring-2 focus:ring-[#003366]">
                           <option value="">Selecione...</option>
                           {CONDICOES_PAGAMENTO.map(c => <option key={c} value={c}>{c}</option>)}
                        </select>
@@ -558,7 +547,7 @@ export default function Home() {
                          {editandoCompra ? 'Salvar Alterações' : 'Adicionar Compra'}
                        </button>
                        {editandoCompra && (
-                           <button type="button" onClick={cancelarEdicaoCompra} className="bg-gray-200 text-gray-700 p-3 rounded font-bold hover:bg-gray-300 transition">
+                           <button type="button" onClick={cancelarEdicaoCompra} className="bg-gray-200 text-gray-800 p-3 rounded font-bold hover:bg-gray-300 transition">
                                Cancelar
                            </button>
                        )}
@@ -566,28 +555,33 @@ export default function Home() {
                 </form>
              </div>
 
-             {/* TABELA */}
              <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-100">
-                <div className="p-4 bg-gray-50 border-b font-bold text-gray-700 flex justify-between items-center">
+                <div className="p-4 bg-gray-50 border-b font-bold text-black flex justify-between items-center">
                     <span>Histórico Recente</span>
-                    <span className="text-xs bg-gray-200 px-2 py-1 rounded text-gray-600">{compras.length} registros</span>
+                    <span className="text-xs bg-gray-200 px-2 py-1 rounded text-black font-bold">{compras.length} registros</span>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
-                    <thead className="bg-gray-50 text-gray-700 uppercase text-xs">
-                        <tr><th className="p-4">Data</th><th className="p-4">Fornecedor</th><th className="p-4">Descrição</th><th className="p-4 text-right">Valor</th><th className="p-4 text-center">Ações</th></tr>
+                    <thead className="bg-gray-100 text-black uppercase text-xs font-bold">
+                        <tr>
+                            <th className="p-4">Data</th>
+                            <th className="p-4">Fornecedor</th>
+                            <th className="p-4">Descrição</th>
+                            <th className="p-4 text-right">Valor</th>
+                            <th className="p-4 text-center">Ações</th>
+                        </tr>
                     </thead>
                     <tbody className="divide-y">
                         {compras.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-gray-500 italic">Sem registros encontrados.</td></tr>}
                         {[...compras].reverse().map(c => (
                             <tr key={c.id} className="hover:bg-blue-50/50 transition cursor-default">
-                                <td className="p-4 text-gray-900">{formatarData(c.data)}</td>
-                                <td className="p-4 text-gray-900 font-medium">{c.fornecedor}</td>
-                                <td className="p-4 text-gray-600">{c.descricao}</td>
+                                <td className="p-4 text-black font-medium">{formatarData(c.data)}</td>
+                                <td className="p-4 text-black font-bold">{c.fornecedor}</td>
+                                <td className="p-4 text-black">{c.descricao}</td>
                                 <td className="p-4 text-right font-bold text-[#003366]">{formatarValor(c.valor)}</td>
                                 <td className="p-4 flex justify-center gap-2">
-                                <button onClick={() => iniciarEdicaoCompra(c)} className="text-blue-600 hover:bg-blue-100 p-1.5 rounded" title="Editar"><Edit2 size={16}/></button>
-                                <button onClick={() => handleRemoverCompra(c.id)} className="text-red-600 hover:bg-red-100 p-1.5 rounded" title="Excluir"><Trash2 size={16}/></button>
+                                <button onClick={() => iniciarEdicaoCompra(c)} className="text-blue-700 hover:bg-blue-100 p-1.5 rounded" title="Editar"><Edit2 size={16}/></button>
+                                <button onClick={() => handleRemoverCompra(c.id)} className="text-red-700 hover:bg-red-100 p-1.5 rounded" title="Excluir"><Trash2 size={16}/></button>
                                 </td>
                             </tr>
                         ))}
@@ -602,31 +596,30 @@ export default function Home() {
         {abaAtiva === "fornecedores" && (
            <div className="space-y-6">
               <div className="flex justify-end">
-                  {/* BOTÃO RESTAURAR PADRÃO */}
-                  <button onClick={handleRestaurarFornecedores} className="flex items-center gap-2 text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded transition font-medium shadow-sm border border-gray-300">
-                      <RefreshCcw size={16}/> Restaurar Iniciais
+                  <button onClick={handleRestaurarFornecedores} className="flex items-center gap-2 text-sm bg-white border border-gray-300 hover:bg-gray-50 text-black font-bold px-4 py-2 rounded shadow-sm transition">
+                      <RefreshCcw size={14}/> Restaurar Padrão
                   </button>
               </div>
 
               <div className="bg-white p-6 rounded-lg shadow border border-gray-100">
-                 <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2 border-b pb-2">
+                 <h3 className="font-bold text-black mb-6 flex items-center gap-2 border-b pb-2">
                      <Users size={20}/> {editandoFornecedor ? 'Editar Fornecedor' : 'Cadastrar Fornecedor'}
                  </h3>
                  <div className="grid md:grid-cols-2 gap-6">
                     <div>
-                        <label className="block text-sm font-semibold text-gray-600 mb-1">Nome da Empresa</label>
-                        <input value={formFornecedor.nome} onChange={e => setFormFornecedor({...formFornecedor, nome: e.target.value})} placeholder="Ex: Zanoti" className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]" />
+                        <label className="block text-sm font-bold text-gray-800 mb-1">Nome da Empresa</label>
+                        <input value={formFornecedor.nome} onChange={e => setFormFornecedor({...formFornecedor, nome: e.target.value})} placeholder="Ex: Zanoti" className="w-full border p-2 rounded text-black focus:ring-2 focus:ring-[#003366]" />
                     </div>
                     <div>
-                        <label className="block text-sm font-semibold text-gray-600 mb-1">Contato</label>
-                        <input value={formFornecedor.contato} onChange={e => setFormFornecedor({...formFornecedor, contato: e.target.value})} placeholder="Email / Telefone" className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]" />
+                        <label className="block text-sm font-bold text-gray-800 mb-1">Contato</label>
+                        <input value={formFornecedor.contato} onChange={e => setFormFornecedor({...formFornecedor, contato: e.target.value})} placeholder="Email / Telefone" className="w-full border p-2 rounded text-black focus:ring-2 focus:ring-[#003366]" />
                     </div>
                     
                     <div className="md:col-span-2">
-                        <label className="block text-sm font-semibold text-gray-600 mb-2">Categorias Fornecidas</label>
+                        <label className="block text-sm font-bold text-gray-800 mb-2">Categorias Fornecidas</label>
                         <div className="flex flex-wrap gap-2">
                             {CATEGORIAS_PADRAO.map(cat => (
-                                <button key={cat} onClick={() => toggleCategoriaFornecedor(cat)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${formFornecedor.categorias_fornecidas.includes(cat) ? 'bg-[#003366] text-white border-[#003366]' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                                <button key={cat} onClick={() => toggleCategoriaFornecedor(cat)} className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${formFornecedor.categorias_fornecidas.includes(cat) ? 'bg-[#003366] text-white border-[#003366]' : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-50'}`}>
                                     {cat}
                                 </button>
                             ))}
@@ -639,7 +632,7 @@ export default function Home() {
                             {editandoFornecedor ? 'Salvar' : 'Cadastrar'}
                         </button>
                         {editandoFornecedor && (
-                            <button onClick={cancelarEdicaoFornecedor} className="bg-gray-200 text-gray-700 p-3 rounded font-bold hover:bg-gray-300 transition">
+                            <button onClick={cancelarEdicaoFornecedor} className="bg-gray-200 text-gray-800 p-3 rounded font-bold hover:bg-gray-300 transition">
                                 Cancelar
                             </button>
                         )}
@@ -647,24 +640,23 @@ export default function Home() {
                  </div>
               </div>
 
-              {/* LISTA */}
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                  {fornecedores.map(f => (
                     <div key={f.id} className="bg-white p-5 rounded-lg shadow-sm border border-gray-200 flex justify-between items-start hover:shadow-md transition">
                        <div>
-                          <h4 className="font-bold text-gray-900 text-lg">{f.nome}</h4>
-                          <p className="text-sm text-gray-500 mb-3">{f.contato || 'Sem contato registrado'}</p>
+                          <h4 className="font-bold text-black text-lg">{f.nome}</h4>
+                          <p className="text-sm text-gray-700 mb-3">{f.contato || 'Sem contato registrado'}</p>
                           <div className="flex flex-wrap gap-1">
                               {f.categorias_fornecidas.map(c => (
-                                  <span key={c} className="text-[10px] bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100 font-medium">
+                                  <span key={c} className="text-[10px] bg-blue-50 text-blue-800 px-2 py-1 rounded border border-blue-200 font-bold">
                                       {c}
                                   </span>
                               ))}
                           </div>
                        </div>
                        <div className="flex gap-1">
-                          <button onClick={() => iniciarEdicaoFornecedor(f)} className="text-blue-600 hover:bg-blue-50 p-2 rounded transition"><Edit2 size={18}/></button>
-                          <button onClick={() => handleRemoverFornecedor(f.id)} className="text-red-600 hover:bg-red-50 p-2 rounded transition"><Trash2 size={18}/></button>
+                          <button onClick={() => iniciarEdicaoFornecedor(f)} className="text-blue-700 hover:bg-blue-100 p-2 rounded transition"><Edit2 size={18}/></button>
+                          <button onClick={() => handleRemoverFornecedor(f.id)} className="text-red-700 hover:bg-red-100 p-2 rounded transition"><Trash2 size={18}/></button>
                        </div>
                     </div>
                  ))}
@@ -677,11 +669,11 @@ export default function Home() {
            <div className="space-y-6">
               <div className="bg-white p-6 rounded-lg shadow border border-gray-100 flex items-center justify-between">
                 <div>
-                    <p className="text-gray-500 text-xs uppercase font-bold tracking-wider">Progresso de Compras ({mesAtual})</p>
+                    <p className="text-gray-600 text-xs uppercase font-bold tracking-wider">Progresso de Compras ({mesAtual})</p>
                     <div className="flex items-end gap-2">
                         <p className="text-3xl font-bold text-[#003366]">
                             {checklistFornecedores.filter(c => c.mes === mesAtual && c.comprado).length}
-                            <span className="text-gray-400 text-lg"> / {fornecedores.length}</span>
+                            <span className="text-black text-lg"> / {fornecedores.length}</span>
                         </p>
                     </div>
                 </div>
@@ -691,7 +683,7 @@ export default function Home() {
               </div>
 
               <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-100">
-                 <div className="p-4 border-b bg-gray-50 font-bold text-gray-700 flex items-center gap-2">
+                 <div className="p-4 border-b bg-gray-50 font-bold text-black flex items-center gap-2">
                      <CheckSquare size={18}/> Checklist Mensal
                  </div>
                  <div className="divide-y">
@@ -708,7 +700,7 @@ export default function Home() {
                              />
                              <div className="flex-1">
                                 <div className="flex justify-between items-center">
-                                   <span className={`font-bold text-lg ${comprado ? 'text-green-800 line-through decoration-green-800/30' : 'text-gray-900'}`}>{f.nome}</span>
+                                   <span className={`font-bold text-lg ${comprado ? 'text-green-900 line-through decoration-green-900/50' : 'text-black'}`}>{f.nome}</span>
                                    {comprado ? (
                                        <span className="text-xs bg-green-200 text-green-900 px-3 py-1 rounded-full font-bold">COMPRADO</span>
                                    ) : (
@@ -717,7 +709,7 @@ export default function Home() {
                                        </button>
                                    )}
                                 </div>
-                                <div className="mt-1 text-sm text-gray-500">
+                                <div className="mt-1 text-sm text-gray-700">
                                     {comprado ? "Já registrado no sistema." : "Pendente de compra para este mês."}
                                 </div>
                              </div>
@@ -733,8 +725,3 @@ export default function Home() {
     </div>
   );
 }
-
-// Git commands
-// git add .
-// git commit -m "Fix dashboard and enable restore feature"
-// git push origin main
