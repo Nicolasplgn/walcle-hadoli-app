@@ -2,9 +2,11 @@
 
 import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
+import { unstable_noStore as noStore } from 'next/cache';
 
 // --- FORNECEDORES ---
 export async function getFornecedores() {
+  noStore();
   try {
     const { rows } = await sql`SELECT * FROM fornecedores ORDER BY nome ASC`;
     return rows.map(row => ({
@@ -14,7 +16,6 @@ export async function getFornecedores() {
       contato: row.contato || ""
     }));
   } catch (error) {
-    console.error('Erro ao buscar fornecedores:', error);
     return [];
   }
 }
@@ -23,14 +24,12 @@ export async function saveFornecedor(fornecedor: { id: string | null, nome: stri
   const categoriasString = fornecedor.categorias_fornecidas.join(',');
   try {
     if (fornecedor.id && fornecedor.id.length > 10) { 
-      // Atualizar
       await sql`
         UPDATE fornecedores 
         SET nome = ${fornecedor.nome}, categorias = ${categoriasString}, contato = ${fornecedor.contato}
         WHERE id = ${fornecedor.id}
       `;
     } else {
-      // Criar Novo
       await sql`
         INSERT INTO fornecedores (nome, categorias, contato)
         VALUES (${fornecedor.nome}, ${categoriasString}, ${fornecedor.contato})
@@ -39,7 +38,6 @@ export async function saveFornecedor(fornecedor: { id: string | null, nome: stri
     revalidatePath('/');
     return { success: true };
   } catch (error) {
-    console.error('Erro ao salvar fornecedor:', error);
     return { success: false };
   }
 }
@@ -54,7 +52,7 @@ export async function deleteFornecedor(id: string) {
   }
 }
 
-// --- FUNÇÃO PARA RESTAURAR OS FORNECEDORES PADRÃO ---
+// --- RESTAURAR PADRÃO ---
 export async function restaurarFornecedoresPadrao() {
   const listaInicial = [
     "Delfa", "Zanoti", "Fermoplast", "Modelle", "Águas Cristal",
@@ -63,7 +61,6 @@ export async function restaurarFornecedoresPadrao() {
 
   try {
     for (const nome of listaInicial) {
-        // Verifica se já existe para não duplicar
         const { rows } = await sql`SELECT id FROM fornecedores WHERE nome = ${nome}`;
         if (rows.length === 0) {
             await sql`INSERT INTO fornecedores (nome, categorias, contato) VALUES (${nome}, '', '')`;
@@ -72,13 +69,13 @@ export async function restaurarFornecedoresPadrao() {
     revalidatePath('/');
     return { success: true };
   } catch (error) {
-    console.error("Erro ao restaurar:", error);
     return { success: false };
   }
 }
 
 // --- COMPRAS ---
 export async function getCompras() {
+  noStore();
   try {
     const { rows } = await sql`SELECT * FROM compras ORDER BY data DESC`;
     return rows.map(row => ({
@@ -91,7 +88,6 @@ export async function getCompras() {
       dataPrevistaFaturamento: row.data_prevista_faturamento ? row.data_prevista_faturamento.toISOString().split('T')[0] : ""
     }));
   } catch (error) {
-    console.error('Erro ao buscar compras:', error);
     return [];
   }
 }
@@ -116,7 +112,6 @@ export async function saveCompra(compra: any) {
     revalidatePath('/');
     return { success: true };
   } catch (error) {
-    console.error('Erro ao salvar compra:', error);
     return { success: false };
   }
 }
@@ -133,6 +128,7 @@ export async function deleteCompra(id: string) {
 
 // --- CHECKLIST ---
 export async function getChecklist() {
+  noStore();
   try {
     const { rows } = await sql`SELECT * FROM checklist`;
     return rows.map(row => ({
@@ -143,7 +139,6 @@ export async function getChecklist() {
       observacao: row.observacao || ""
     }));
   } catch (error) {
-    console.error('Erro checklist:', error);
     return [];
   }
 }
@@ -170,7 +165,6 @@ export async function saveChecklistItem(item: any) {
     revalidatePath('/');
     return { success: true };
   } catch (error) {
-    console.error(error);
     return { success: false };
   }
 }

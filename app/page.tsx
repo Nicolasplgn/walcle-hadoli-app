@@ -1,14 +1,22 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
-import { ShoppingCart, DollarSign, Users, TrendingUp, Plus, Trash2, Edit2, Save, X, Calendar, Target, CheckSquare, Lock, LogOut, RefreshCcw } from "lucide-react";
 import { 
-  getFornecedores, saveFornecedor, deleteFornecedor, getCompras, 
-  saveCompra, deleteCompra, getChecklist, saveChecklistItem, 
-  restaurarFornecedoresPadrao // <--- ADICIONE ESSA IMPORTAÇÃO AQUI
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
+  PieChart, Pie, Cell, LineChart, Line 
+} from "recharts";
+import { 
+  ShoppingCart, DollarSign, Users, TrendingUp, Plus, Trash2, Edit2, Save, X, 
+  Target, Lock, Loader2, LogOut, RefreshCcw, CheckSquare 
+} from "lucide-react";
+
+import { 
+  getFornecedores, saveFornecedor, deleteFornecedor, 
+  getCompras, saveCompra, deleteCompra, 
+  getChecklist, saveChecklistItem, restaurarFornecedoresPadrao 
 } from "./actions";
 
+// --- INTERFACES ---
 interface Compra {
   id: string;
   data: string;
@@ -31,7 +39,7 @@ interface ChecklistFornecedor {
   comprado: boolean;
   compraId: string | null;
   observacao: string;
-  mes: string; // YYYY-MM
+  mes: string;
 }
 
 type Aba = "dashboard" | "lancamentos" | "fornecedores" | "planejamento";
@@ -42,21 +50,19 @@ const CATEGORIAS_PADRAO = ["Matéria-prima", "Embalagem", "Serviços", "Equipame
 const CONDICOES_PAGAMENTO = ["Pix", "Boleto", "Cartão", "Transferência"];
 
 export default function Home() {
-  // Estado de autenticação
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [loginForm, setLoginForm] = useState({ usuario: "", senha: "" });
   const [loginError, setLoginError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const [abaAtiva, setAbaAtiva] = useState<Aba>("dashboard");
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [compras, setCompras] = useState<Compra[]>([]);
   const [checklistFornecedores, setChecklistFornecedores] = useState<ChecklistFornecedor[]>([]);
   
-  // Estados para filtros do Dashboard
   const [filtroTempo, setFiltroTempo] = useState<FiltroTempo>("mensal");
   const [filtroFornecedor, setFiltroFornecedor] = useState<string>("todos");
   
-  // Estados para formulários
   const [formFornecedor, setFormFornecedor] = useState({
     id: "",
     nome: "",
@@ -76,7 +82,6 @@ export default function Home() {
   });
   const [editandoCompra, setEditandoCompra] = useState(false);
 
-  // Verificar autenticação ao carregar
   useEffect(() => {
     const authStatus = localStorage.getItem("isAuthenticated");
     if (authStatus === "true") {
@@ -84,106 +89,59 @@ export default function Home() {
     }
   }, []);
 
-  // Migração de dados antigos e carregamento inicial
-  useEffect(() => {
-    if (!isAuthenticated) return; // Só carregar dados se autenticado
-    
+  const carregarDadosDoBanco = async () => {
+    if (!isAuthenticated) return;
+    setIsLoading(true);
     try {
-      // Carregar fornecedores com migração
-      const fornecedoresSalvos = localStorage.getItem("fornecedores");
-      if (fornecedoresSalvos) {
-        try {
-          const dados = JSON.parse(fornecedoresSalvos);
-          // Verificar se é formato antigo (array de strings ou objetos simples)
-          if (Array.isArray(dados) && dados.length > 0) {
-            if (typeof dados[0] === 'string' || (dados[0].nome && !dados[0].categorias_fornecidas)) {
-              // Migrar formato antigo
-              const fornecedoresMigrados: Fornecedor[] = dados.map((item: any, index: number) => ({
-                id: typeof item === 'string' ? `forn-${index}` : item.id || `forn-${index}`,
-                nome: typeof item === 'string' ? item : item.nome,
-                categorias_fornecidas: [],
-                contato: "",
-              }));
-              setFornecedores(fornecedoresMigrados);
-              localStorage.setItem("fornecedores", JSON.stringify(fornecedoresMigrados));
-            } else {
-              setFornecedores(dados);
-            }
-          }
-        } catch (e) {
-          console.error("Erro ao carregar fornecedores:", e);
-          inicializarFornecedoresPadrao();
-        }
-      } else {
-        inicializarFornecedoresPadrao();
-      }
+      const [dadosFornecedores, dadosCompras, dadosChecklist] = await Promise.all([
+        getFornecedores(),
+        getCompras(),
+        getChecklist()
+      ]);
 
-      // Carregar compras
-      const comprasSalvas = localStorage.getItem("compras");
-      if (comprasSalvas) {
-        try {
-          const dados = JSON.parse(comprasSalvas);
-          // Migrar compras antigas (sem novos campos)
-          const comprasMigradas: Compra[] = dados.map((compra: any) => ({
-            ...compra,
-            condicaoPagamento: compra.condicaoPagamento || "",
-            dataPrevistaFaturamento: compra.dataPrevistaFaturamento || "",
-          }));
-          setCompras(comprasMigradas);
-          localStorage.setItem("compras", JSON.stringify(comprasMigradas));
-        } catch (e) {
-          console.error("Erro ao carregar compras:", e);
-          setCompras([]);
-        }
-      }
-
-      // Carregar checklist de planejamento
-      const checklistSalvo = localStorage.getItem("checklistFornecedores");
-      if (checklistSalvo) {
-        try {
-          setChecklistFornecedores(JSON.parse(checklistSalvo));
-        } catch (e) {
-          console.error("Erro ao carregar checklist:", e);
-          setChecklistFornecedores([]);
-        }
-      }
+      setFornecedores(dadosFornecedores);
+      setCompras(dadosCompras);
+      setChecklistFornecedores(dadosChecklist);
     } catch (error) {
-      console.error("Erro geral ao carregar dados:", error);
-      // Inicializar valores padrão em caso de erro
-      inicializarFornecedoresPadrao();
+      console.error("Erro ao carregar dados do banco:", error);
+    } finally {
+      setIsLoading(false);
     }
-  }, []);
-
-  const inicializarFornecedoresPadrao = () => {
-    const fornecedoresIniciais: Fornecedor[] = [
-      "Delfa", "Zanoti", "Fermoplast", "Modelle", "Águas Cristal",
-      "Top Bojos", "Etax", "Mercado (Atacado)", "Midlab", "Mercado Livre"
-    ].map((nome, index) => ({
-      id: `forn-${Date.now()}-${index}`,
-      nome,
-      categorias_fornecidas: [],
-      contato: "",
-    }));
-    setFornecedores(fornecedoresIniciais);
-    localStorage.setItem("fornecedores", JSON.stringify(fornecedoresIniciais));
   };
 
-  // Salvar dados no LocalStorage
   useEffect(() => {
-    if (fornecedores.length > 0) {
-      localStorage.setItem("fornecedores", JSON.stringify(fornecedores));
+    if (isAuthenticated) {
+      carregarDadosDoBanco();
     }
-  }, [fornecedores]);
+  }, [isAuthenticated]);
 
-  useEffect(() => {
-    localStorage.setItem("compras", JSON.stringify(compras));
-  }, [compras]);
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loginForm.usuario === "isabela" && loginForm.senha === "22062001") {
+      setIsAuthenticated(true);
+      localStorage.setItem("isAuthenticated", "true");
+    } else {
+      setLoginError("Credenciais inválidas");
+    }
+  };
 
-  useEffect(() => {
-    localStorage.setItem("checklistFornecedores", JSON.stringify(checklistFornecedores));
-  }, [checklistFornecedores]);
+  const handleLogout = () => {
+    if (confirm("Deseja realmente sair?")) {
+        localStorage.removeItem("isAuthenticated");
+        setIsAuthenticated(false);
+        setLoginForm({ usuario: "", senha: "" });
+    }
+  };
 
-  // Calcular total gasto (respeitando filtros)
+  const handleRestaurarFornecedores = async () => {
+    if(!confirm("Isso irá cadastrar os fornecedores padrão (Delfa, Zanoti, etc) caso não existam. Continuar?")) return;
+    setIsLoading(true);
+    await restaurarFornecedoresPadrao();
+    await carregarDadosDoBanco();
+    setIsLoading(false);
+    alert("Lista de fornecedores restaurada!");
+  };
+
   const comprasFiltradas = filtroFornecedor === "todos"
     ? compras
     : compras.filter(c => c.fornecedor === filtroFornecedor);
@@ -199,23 +157,25 @@ export default function Home() {
     } else if (filtroTempo === "anual") {
       dataLimite.setFullYear(agora.getFullYear() - 1);
     }
-    
     return comprasArray.filter(c => new Date(c.data) >= dataLimite);
   };
 
-  // Incluir compras do planejamento nos cálculos do dashboard
   const mesAtual = new Date().toISOString().slice(0, 7);
   const checklistMesAtual = checklistFornecedores.filter(item => item.mes === mesAtual);
+  
   const comprasDoPlanejamento = checklistMesAtual
     .filter(item => item.comprado && item.compraId)
     .map(item => compras.find(c => c.id === item.compraId))
-    .filter((c): c is Compra => c !== null);
+    .filter((c): c is Compra => c !== undefined);
   
-  const comprasParaDashboard = [...comprasFiltradas, ...comprasDoPlanejamento.filter(c => !comprasFiltradas.some(cf => cf.id === c.id))];
+  const comprasParaDashboard = [
+    ...comprasFiltradas, 
+    ...comprasDoPlanejamento.filter(c => !comprasFiltradas.some(cf => cf.id === c.id) && (filtroFornecedor === "todos" || c.fornecedor === filtroFornecedor))
+  ];
+  
   const comprasParaGraficos = aplicarFiltroTempo(comprasParaDashboard);
   const totalGasto = comprasParaDashboard.reduce((acc, compra) => acc + compra.valor, 0);
 
-  // Dados para gráficos
   const dadosRanking = fornecedores
     .map(fornecedor => {
       const total = comprasParaGraficos
@@ -226,49 +186,55 @@ export default function Home() {
     .filter(item => item.total > 0)
     .sort((a, b) => b.total - a.total);
 
-  const dadosPizza = dadosRanking.map(item => ({
-    name: item.nome,
-    value: item.total
-  }));
+  const dadosPizza = dadosRanking.map(item => ({ name: item.nome, value: item.total }));
 
-  // Dados para gráfico de evolução (agrupa por período conforme filtro)
-  const dadosEvolucao = comprasParaGraficos.reduce((acc: { [key: string]: { total: number; timestamp: number } }, compra) => {
+  const dadosEvolucaoObj = comprasParaGraficos.reduce((acc: any, compra) => {
     const data = new Date(compra.data);
-    let chave: string;
-    let timestamp: number;
+    let chave: string, ts: number;
     
     if (filtroTempo === "mensal") {
       chave = data.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
-      timestamp = new Date(data.getFullYear(), data.getMonth(), 1).getTime();
+      ts = new Date(data.getFullYear(), data.getMonth(), 1).getTime();
     } else if (filtroTempo === "semestral") {
       const semestre = Math.floor(data.getMonth() / 6);
       chave = `${semestre + 1}º Sem ${data.getFullYear()}`;
-      timestamp = new Date(data.getFullYear(), semestre * 6, 1).getTime();
+      ts = new Date(data.getFullYear(), semestre * 6, 1).getTime();
     } else {
       chave = data.getFullYear().toString();
-      timestamp = new Date(data.getFullYear(), 0, 1).getTime();
+      ts = new Date(data.getFullYear(), 0, 1).getTime();
     }
-    
-    if (!acc[chave]) {
-      acc[chave] = { total: 0, timestamp };
-    }
+    if (!acc[chave]) acc[chave] = { total: 0, timestamp: ts };
     acc[chave].total += compra.valor;
     return acc;
   }, {});
+  const dadosEvolucao = Object.values(dadosEvolucaoObj).sort((a: any, b: any) => a.timestamp - b.timestamp).map((d: any) => ({ periodo: d.key || d.periodo || 'Periodo', total: d.total, ...d }));
 
-  const dadosEvolucaoArray = Object.entries(dadosEvolucao)
-    .map(([periodo, dados]) => ({ periodo, total: dados.total, timestamp: dados.timestamp }))
-    .sort((a, b) => a.timestamp - b.timestamp)
-    .map(({ periodo, total }) => ({ periodo, total }));
-
-  // Funções de fornecedores
-  const iniciarEdicaoFornecedor = (fornecedor: Fornecedor) => {
-    setFormFornecedor({
-      id: fornecedor.id,
-      nome: fornecedor.nome,
-      categorias_fornecidas: [...fornecedor.categorias_fornecidas],
-      contato: fornecedor.contato,
+  const handleSalvarFornecedor = async () => {
+    if (!formFornecedor.nome.trim()) return;
+    setIsLoading(true);
+    await saveFornecedor({
+        id: editandoFornecedor ? formFornecedor.id : null,
+        nome: formFornecedor.nome.trim(),
+        categorias_fornecidas: formFornecedor.categorias_fornecidas,
+        contato: formFornecedor.contato.trim()
     });
+    await carregarDadosDoBanco();
+    setFormFornecedor({ id: "", nome: "", categorias_fornecidas: [], contato: "" });
+    setEditandoFornecedor(false);
+    setIsLoading(false);
+  };
+
+  const handleRemoverFornecedor = async (id: string) => {
+    if (confirm("Deseja remover este fornecedor?")) {
+      setIsLoading(true);
+      await deleteFornecedor(id);
+      await carregarDadosDoBanco();
+      setIsLoading(false);
+    }
+  };
+
+  const iniciarEdicaoFornecedor = (f: Fornecedor) => {
+    setFormFornecedor({ ...f });
     setEditandoFornecedor(true);
   };
 
@@ -277,255 +243,145 @@ export default function Home() {
     setEditandoFornecedor(false);
   };
 
-  const salvarFornecedor = () => {
-    if (!formFornecedor.nome.trim()) return;
-    
-    if (editandoFornecedor) {
-      setFornecedores(fornecedores.map(f => f.id === formFornecedor.id ? formFornecedor : f));
+  const toggleCategoriaFornecedor = (cat: string) => {
+    const cats = formFornecedor.categorias_fornecidas;
+    if (cats.includes(cat)) {
+        setFormFornecedor({ ...formFornecedor, categorias_fornecidas: cats.filter(c => c !== cat) });
     } else {
-      const novo: Fornecedor = {
-        id: `forn-${Date.now()}`,
-        nome: formFornecedor.nome.trim(),
-        categorias_fornecidas: formFornecedor.categorias_fornecidas,
-        contato: formFornecedor.contato.trim(),
-      };
-      setFornecedores([...fornecedores, novo]);
-    }
-    cancelarEdicaoFornecedor();
-  };
-
-  const removerFornecedor = (id: string) => {
-    if (confirm("Tem certeza que deseja remover este fornecedor?")) {
-      setFornecedores(fornecedores.filter(f => f.id !== id));
+        setFormFornecedor({ ...formFornecedor, categorias_fornecidas: [...cats, cat] });
     }
   };
 
-  const toggleCategoriaFornecedor = (categoria: string) => {
-    const categorias = formFornecedor.categorias_fornecidas;
-    if (categorias.includes(categoria)) {
-      setFormFornecedor({ ...formFornecedor, categorias_fornecidas: categorias.filter(c => c !== categoria) });
-    } else {
-      setFormFornecedor({ ...formFornecedor, categorias_fornecidas: [...categorias, categoria] });
-    }
-  };
-
-  // Funções de compras
-  const iniciarEdicaoCompra = (compra: Compra) => {
-    setFormCompra({
-      id: compra.id,
-      data: compra.data,
-      fornecedor: compra.fornecedor,
-      descricao: compra.descricao,
-      valor: compra.valor.toString(),
-      condicaoPagamento: compra.condicaoPagamento,
-      dataPrevistaFaturamento: compra.dataPrevistaFaturamento,
-    });
-    setEditandoCompra(true);
-  };
-
-  const cancelarEdicaoCompra = () => {
-    setFormCompra({
-      id: "",
-      data: new Date().toISOString().split('T')[0],
-      fornecedor: "",
-      descricao: "",
-      valor: "",
-      condicaoPagamento: "",
-      dataPrevistaFaturamento: "",
-    });
-    setEditandoCompra(false);
-  };
-
-  const salvarCompra = (e: React.FormEvent) => {
+  const handleSalvarCompra = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formCompra.fornecedor || !formCompra.descricao || !formCompra.valor) return;
+    if (!formCompra.fornecedor || !formCompra.valor) return;
+    setIsLoading(true);
 
-    const compraAtualizada: Compra = {
-      id: editandoCompra ? formCompra.id : `compra-${Date.now()}`,
+    await saveCompra({
+      id: editandoCompra ? formCompra.id : null,
       data: formCompra.data,
       fornecedor: formCompra.fornecedor,
       descricao: formCompra.descricao,
       valor: parseFloat(formCompra.valor),
       condicaoPagamento: formCompra.condicaoPagamento,
       dataPrevistaFaturamento: formCompra.dataPrevistaFaturamento,
-    };
+    });
 
-    if (editandoCompra) {
-      setCompras(compras.map(c => c.id === compraAtualizada.id ? compraAtualizada : c));
-    } else {
-      setCompras([...compras, compraAtualizada]);
-    }
-    cancelarEdicaoCompra();
+    await carregarDadosDoBanco();
+    setFormCompra({ 
+        id: "", 
+        data: new Date().toISOString().split('T')[0], 
+        fornecedor: "", 
+        descricao: "", 
+        valor: "", 
+        condicaoPagamento: "", 
+        dataPrevistaFaturamento: "" 
+    });
+    setEditandoCompra(false);
+    setIsLoading(false);
   };
 
-  const removerCompra = (id: string) => {
+  const iniciarEdicaoCompra = (c: Compra) => {
+    setFormCompra({
+      id: c.id,
+      data: c.data,
+      fornecedor: c.fornecedor,
+      descricao: c.descricao,
+      valor: c.valor.toString(),
+      condicaoPagamento: c.condicaoPagamento,
+      dataPrevistaFaturamento: c.dataPrevistaFaturamento
+    });
+    setEditandoCompra(true);
+  };
+
+  const cancelarEdicaoCompra = () => {
+    setFormCompra({ 
+        id: "", 
+        data: new Date().toISOString().split('T')[0], 
+        fornecedor: "", 
+        descricao: "", 
+        valor: "", 
+        condicaoPagamento: "", 
+        dataPrevistaFaturamento: "" 
+    });
+    setEditandoCompra(false);
+  };
+
+  const handleRemoverCompra = async (id: string) => {
     if (confirm("Tem certeza que deseja remover esta compra?")) {
-      setCompras(compras.filter(c => c.id !== id));
+      setIsLoading(true);
+      await deleteCompra(id);
+      await carregarDadosDoBanco();
+      setIsLoading(false);
     }
   };
 
-  // Funções de planejamento (checklist)
-  const checklistMesAtualPlanejamento = checklistFornecedores.filter(item => item.mes === mesAtual);
-
-  const toggleFornecedorChecklist = (fornecedorId: string) => {
-    const itemExistente = checklistMesAtualPlanejamento.find(item => item.fornecedorId === fornecedorId);
-    
-    if (itemExistente) {
-      // Se já existe, apenas alterna o estado comprado
-      const mesAtualCheck = new Date().toISOString().slice(0, 7);
-      setChecklistFornecedores(checklistFornecedores.map(item => 
-        item.fornecedorId === fornecedorId && item.mes === mesAtualCheck
-          ? { ...item, comprado: !item.comprado, compraId: !item.comprado ? item.compraId : null }
-          : item
-      ));
-    } else {
-      // Se não existe, cria novo item
-      const mesAtualCheck = new Date().toISOString().slice(0, 7);
-      const novoItem: ChecklistFornecedor = {
-        fornecedorId,
-        comprado: true,
-        compraId: null,
-        observacao: "",
-        mes: mesAtualCheck,
-      };
-      setChecklistFornecedores([...checklistFornecedores, novoItem]);
-    }
-  };
-
-  const atualizarChecklistFornecedor = (fornecedorId: string, campo: 'compraId' | 'observacao', valor: string) => {
+  const handleToggleChecklist = async (fornecedorId: string) => {
     const mesAtual = new Date().toISOString().slice(0, 7);
-    setChecklistFornecedores(checklistFornecedores.map(item =>
-      item.fornecedorId === fornecedorId && item.mes === mesAtual
-        ? { ...item, [campo]: valor }
-        : item
-    ));
+    const itemExistente = checklistFornecedores.find(item => item.fornecedorId === fornecedorId && item.mes === mesAtual);
+    const novoStatus = !itemExistente?.comprado;
+    
+    const novosItens = [...checklistFornecedores];
+    if (itemExistente) {
+        const index = novosItens.findIndex(i => i === itemExistente);
+        novosItens[index] = { ...itemExistente, comprado: novoStatus };
+    } else {
+        novosItens.push({ fornecedorId, mes: mesAtual, comprado: true, compraId: null, observacao: "" });
+    }
+    setChecklistFornecedores(novosItens);
+
+    await saveChecklistItem({
+        fornecedorId,
+        mes: mesAtual,
+        comprado: novoStatus,
+        compraId: itemExistente?.compraId || null,
+        observacao: itemExistente?.observacao || ""
+    });
   };
 
-  const criarCompraDoPlanejamento = (fornecedorId: string) => {
+  const criarCompraDoPlanejamento = async (fornecedorId: string) => {
     const fornecedor = fornecedores.find(f => f.id === fornecedorId);
     if (!fornecedor) return;
-
-    const novaCompra: Compra = {
-      id: `compra-${Date.now()}`,
-      data: new Date().toISOString().split('T')[0],
-      fornecedor: fornecedor.nome,
-      descricao: `Compra planejada - ${fornecedor.nome}`,
-      valor: 0,
-      condicaoPagamento: "",
-      dataPrevistaFaturamento: "",
-    };
     
-    setCompras([...compras, novaCompra]);
-    
-    // Atualiza o checklist com o ID da nova compra
-    atualizarChecklistFornecedor(fornecedorId, 'compraId', novaCompra.id);
-    
-    // Abre a aba de lançamentos para editar a compra
-    setAbaAtiva("lancamentos");
-    setTimeout(() => {
-      iniciarEdicaoCompra(novaCompra);
-    }, 100);
+    setIsLoading(true);
+    await saveCompra({ 
+        id: null, 
+        data: new Date().toISOString().split('T')[0], 
+        fornecedor: fornecedor.nome, 
+        descricao: `Planejado - ${fornecedor.nome}`, 
+        valor: 0, 
+        condicaoPagamento: "", 
+        dataPrevistaFaturamento: "" 
+    });
+    await carregarDadosDoBanco();
+    setIsLoading(false);
+    alert("Compra criada na aba Lançamentos! Edite o valor lá.");
   };
 
-  // Cálculos para dashboard do planejamento
-  const fornecedoresComprados = checklistMesAtualPlanejamento.filter(item => item.comprado).length;
-  const totalPlanejado = fornecedores.length;
-  const totalRealizado = fornecedoresComprados;
+  const formatarValor = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+  const formatarData = (d: string) => new Date(d).toLocaleDateString('pt-BR');
+  const formatarValorTooltip = (value: number | undefined) => (value === undefined || isNaN(value)) ? '' : formatarValor(value);
 
-  // Utilitários
-  const formatarValor = (valor: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(valor);
-  };
-
-  const formatarValorTooltip = (value: number | undefined) => {
-    if (value === undefined || isNaN(value)) return '';
-    return formatarValor(value);
-  };
-
-  const formatarData = (data: string) => {
-    return new Date(data).toLocaleDateString('pt-BR');
-  };
-// --- FUNÇÃO DE SAIR (NOVA) ---
-const handleLogout = () => {
-  if(confirm("Deseja realmente sair?")) {
-    localStorage.removeItem("isAuthenticated");
-    setIsAuthenticated(false);
-    setLoginForm({ usuario: "", senha: "" });
-  }
-};
-
-
-  // Função de login
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError("");
-
-    if (loginForm.usuario === "isabela" && loginForm.senha === "22062001") {
-      setIsAuthenticated(true);
-      localStorage.setItem("isAuthenticated", "true");
-    } else {
-      setLoginError("Usuário ou senha incorretos");
-    }
-  };
-
-  // Se não estiver autenticado, mostrar tela de login
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
         <div className="bg-white p-8 rounded-lg shadow-lg border border-gray-200 w-full max-w-md">
           <div className="text-center mb-6">
-            <div className="flex justify-center mb-4">
-              <div className="bg-[#003366] p-3 rounded-full">
-                <Lock className="w-8 h-8 text-white" />
-              </div>
-            </div>
+            <div className="flex justify-center mb-4"><div className="bg-[#003366] p-3 rounded-full"><Lock className="w-8 h-8 text-white" /></div></div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Walcle / Hadoli</h1>
             <p className="text-gray-600">ERP de Compras</p>
           </div>
-
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">
-                Usuário
-              </label>
-              <input
-                type="text"
-                value={loginForm.usuario}
-                onChange={(e) => setLoginForm({ ...loginForm, usuario: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003366] focus:border-transparent text-gray-900"
-                placeholder="Digite seu usuário"
-                required
-                autoComplete="username"
-              />
+              <label className="block text-sm font-medium text-gray-900 mb-1">Usuário</label>
+              <input type="text" value={loginForm.usuario} onChange={e => setLoginForm({...loginForm, usuario: e.target.value})} className="w-full px-4 py-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-[#003366]" placeholder="Digite seu usuário" required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-1">
-                Senha
-              </label>
-              <input
-                type="password"
-                value={loginForm.senha}
-                onChange={(e) => setLoginForm({ ...loginForm, senha: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003366] focus:border-transparent text-gray-900"
-                placeholder="Digite sua senha"
-                required
-                autoComplete="current-password"
-              />
+              <label className="block text-sm font-medium text-gray-900 mb-1">Senha</label>
+              <input type="password" value={loginForm.senha} onChange={e => setLoginForm({...loginForm, senha: e.target.value})} className="w-full px-4 py-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-[#003366]" placeholder="Digite sua senha" required />
             </div>
-            {loginError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {loginError}
-              </div>
-            )}
-            <button
-              type="submit"
-              className="w-full px-6 py-3 bg-[#003366] text-white rounded-lg hover:bg-[#004080] transition-colors font-medium text-lg"
-            >
-              Entrar
-            </button>
+            {loginError && <div className="text-red-600 text-sm bg-red-50 p-2 rounded border border-red-200">{loginError}</div>}
+            <button type="submit" className="w-full py-3 bg-[#003366] text-white rounded-lg font-bold hover:bg-[#004080] transition">Entrar</button>
           </form>
         </div>
       </div>
@@ -534,693 +390,351 @@ const handleLogout = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="bg-[#003366] text-white shadow-lg">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-white">Walcle / Hadoli</h1>
-              <p className="text-blue-200 mt-1">ERP de Compras</p>
-            </div>
-            <div className="flex items-center gap-4 bg-blue-900/50 px-6 py-3 rounded-lg">
-              <DollarSign className="w-6 h-6" />
-              <div>
-                <p className="text-sm text-blue-200">Total Gasto</p>
-                <p className="text-2xl font-bold text-white">{formatarValor(totalGasto)}</p>
-              </div>
-              <div className="flex items-center gap-4">
-    <div className="bg-blue-900/50 px-6 py-3 rounded-lg">
-        {/* ... código do total gasto que já existe ... */}
-    </div>
-
-    {/* COLE O BOTÃO DE SAIR AQUI EMBAIXO: */}
-    <button 
-        onClick={handleLogout} 
-        className="bg-red-600 hover:bg-red-700 p-3 rounded-lg text-white flex items-center gap-2 font-bold transition"
-    >
-        <LogOut size={20} /> Sair
-    </button>
-</div>
-            </div>
+      
+      {/* HEADER */}
+      <header className="bg-[#003366] text-white shadow-lg sticky top-0 z-20">
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold">Walcle / Hadoli</h1>
+            <p className="text-blue-200 text-sm">ERP de Compras</p>
+          </div>
+          <div className="flex items-center gap-4">
+             <div className="bg-blue-900/50 px-4 py-2 rounded-lg text-right hidden md:block border border-blue-800">
+               <div className="flex items-center gap-2">
+                   <DollarSign className="w-4 h-4 text-green-400"/>
+                   <div>
+                       <p className="text-[10px] text-blue-200 uppercase tracking-wider">Total Acumulado</p>
+                       <p className="text-xl font-bold">{formatarValor(totalGasto)}</p>
+                   </div>
+               </div>
+             </div>
+             {/* BOTÃO DE SAIR */}
+             <button onClick={handleLogout} className="bg-red-600/80 hover:bg-red-600 p-2 rounded-lg text-white flex items-center gap-2 text-sm font-bold transition shadow-md">
+                <LogOut size={18} /> <span className="hidden sm:inline">Sair</span>
+             </button>
           </div>
         </div>
+        {isLoading && <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-300 overflow-hidden"><div className="h-full bg-yellow-400 animate-pulse w-1/2 mx-auto"></div></div>}
       </header>
 
-      {/* Navegação */}
-      <nav className="bg-white shadow-md border-b border-gray-200">
-        <div className="container mx-auto px-4">
-          <div className="flex gap-1 overflow-x-auto">
-            <button
-              onClick={() => setAbaAtiva("dashboard")}
-              className={`px-6 py-4 font-medium transition-colors whitespace-nowrap ${
-                abaAtiva === "dashboard"
-                  ? "bg-[#003366] text-white border-b-2 border-[#003366]"
-                  : "text-gray-600 hover:text-[#003366] hover:bg-gray-50"
-              }`}
+      {/* NAVEGAÇÃO */}
+      <nav className="bg-white shadow-md border-b sticky top-[76px] z-10">
+        <div className="container mx-auto px-4 flex gap-2 overflow-x-auto pb-1 pt-1">
+          {[
+              { id: "dashboard", label: "Dashboard", icon: TrendingUp },
+              { id: "lancamentos", label: "Lançamentos", icon: ShoppingCart },
+              { id: "fornecedores", label: "Fornecedores", icon: Users },
+              { id: "planejamento", label: "Planejamento", icon: Target }
+          ].map(tab => (
+            <button 
+                key={tab.id} 
+                onClick={() => setAbaAtiva(tab.id as Aba)} 
+                className={`py-3 px-4 font-medium capitalize border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${abaAtiva === tab.id ? 'border-[#003366] text-[#003366] bg-blue-50/50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
             >
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4" />
-                Dashboard
-              </div>
+              <tab.icon size={18}/> {tab.label}
             </button>
-            <button
-              onClick={() => setAbaAtiva("lancamentos")}
-              className={`px-6 py-4 font-medium transition-colors whitespace-nowrap ${
-                abaAtiva === "lancamentos"
-                  ? "bg-[#003366] text-white border-b-2 border-[#003366]"
-                  : "text-gray-600 hover:text-[#003366] hover:bg-gray-50"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <ShoppingCart className="w-4 h-4" />
-                Lançamentos
-              </div>
-            </button>
-            <button
-              onClick={() => setAbaAtiva("fornecedores")}
-              className={`px-6 py-4 font-medium transition-colors whitespace-nowrap ${
-                abaAtiva === "fornecedores"
-                  ? "bg-[#003366] text-white border-b-2 border-[#003366]"
-                  : "text-gray-600 hover:text-[#003366] hover:bg-gray-50"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                Fornecedores
-              </div>
-            </button>
-            <button
-              onClick={() => setAbaAtiva("planejamento")}
-              className={`px-6 py-4 font-medium transition-colors whitespace-nowrap ${
-                abaAtiva === "planejamento"
-                  ? "bg-[#003366] text-white border-b-2 border-[#003366]"
-                  : "text-gray-600 hover:text-[#003366] hover:bg-gray-50"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Target className="w-4 h-4" />
-                Planejamento
-              </div>
-            </button>
-          </div>
+          ))}
         </div>
       </nav>
 
-      {/* Conteúdo */}
-      <main className="container mx-auto px-4 py-8">
-        {/* Aba Dashboard */}
+      {/* ÁREA DE CONTEÚDO */}
+      <main className="container mx-auto px-4 py-8 pb-20">
+        
+        {/* === DASHBOARD === */}
         {abaAtiva === "dashboard" && (
-          <div className="space-y-8">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <h2 className="text-3xl font-bold text-gray-900">Dashboard</h2>
-              
-              {/* Filtros */}
-              <div className="flex gap-4 flex-wrap">
-                <select
-                  value={filtroTempo}
-                  onChange={(e) => setFiltroTempo(e.target.value as FiltroTempo)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-[#003366] focus:border-transparent"
-                >
-                  <option value="mensal">Mensal</option>
-                  <option value="semestral">Semestral</option>
-                  <option value="anual">Anual</option>
-                </select>
-                
-                <select
-                  value={filtroFornecedor}
-                  onChange={(e) => setFiltroFornecedor(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-[#003366] focus:border-transparent min-w-[200px]"
-                >
-                  <option value="todos">Todos os Fornecedores</option>
-                  {fornecedores.map(fornecedor => (
-                    <option key={fornecedor.id} value={fornecedor.nome}>
-                      {fornecedor.nome}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div className="space-y-6">
+            <div className="flex justify-between flex-wrap gap-4 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+               <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><TrendingUp size={24}/> Visão Geral</h2>
+               <div className="flex gap-2">
+                 <select value={filtroTempo} onChange={e => setFiltroTempo(e.target.value as any)} className="border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]">
+                    <option value="mensal">Mensal</option>
+                    <option value="semestral">Semestral</option>
+                    <option value="anual">Anual</option>
+                 </select>
+                 <select value={filtroFornecedor} onChange={e => setFiltroFornecedor(e.target.value)} className="border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]">
+                    <option value="todos">Todos Fornecedores</option>
+                    {fornecedores.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}
+                 </select>
+               </div>
             </div>
             
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Gráfico de Barras - Ranking */}
-              <div className="bg-white p-6 rounded-lg shadow-md border border-gray-100">
-                <h3 className="text-xl font-semibold text-gray-900 mb-4">Ranking de Fornecedores</h3>
-                {dadosRanking.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={dadosRanking}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis 
-                        dataKey="nome" 
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                        tick={{ fontSize: 12, fill: '#000' }}
-                      />
-                      <YAxis tick={{ fontSize: 12, fill: '#000' }} />
-                      <Tooltip 
-                        formatter={formatarValorTooltip}
-                        contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#000' }}
-                        itemStyle={{ color: '#000', fontWeight: 'bold' }}
-                        labelStyle={{ color: '#000', fontWeight: 'bold' }}
-                      />
-                      <Legend wrapperStyle={{ color: '#000' }} />
-                      <Bar dataKey="total" fill="#003366" radius={[8, 8, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center text-gray-700">
-                    Nenhum dado disponível para o período selecionado
-                  </div>
-                )}
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Ranking */}
+              <div className="bg-white p-6 rounded-lg shadow h-[400px] border border-gray-100">
+                <h3 className="font-bold text-gray-700 mb-6 flex items-center gap-2 border-b pb-2">Ranking de Gastos</h3>
+                <ResponsiveContainer width="100%" height="85%">
+                  <BarChart data={dadosRanking}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false}/>
+                    <XAxis dataKey="nome" tick={{fontSize: 11, fill: '#333'}} height={60} interval={0} angle={-30} textAnchor="end"/>
+                    <YAxis tick={{fontSize: 12, fill: '#333'}} />
+                    <Tooltip formatter={formatarValorTooltip} contentStyle={{ borderRadius: '8px', border: '1px solid #ddd' }} />
+                    <Bar dataKey="total" fill="#003366" radius={[4, 4, 0, 0]} barSize={40} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
 
-              {/* Gráfico de Pizza */}
-              <div className="bg-white p-6 rounded-lg shadow-md border border-gray-100">
-                <h3 className="text-xl font-semibold text-gray-900 mb-4">Distribuição por Fornecedor</h3>
-                {dadosPizza.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
+              {/* Pizza */}
+              <div className="bg-white p-6 rounded-lg shadow h-[400px] border border-gray-100">
+                <h3 className="font-bold text-gray-700 mb-6 flex items-center gap-2 border-b pb-2">Distribuição (%)</h3>
+                <ResponsiveContainer width="100%" height="85%">
                     <PieChart>
-                      <Pie
-                        data={dadosPizza}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(1)}%`}
-                        outerRadius={80}
-                        fill="#8884d8"
+                      <Pie 
+                        data={dadosPizza} 
+                        cx="50%" 
+                        cy="50%" 
+                        labelLine={false} 
+                        label={({ name, percent }: any) => `${name}: ${(percent * 100).toFixed(0)}%`} 
+                        outerRadius={100} 
+                        fill="#8884d8" 
                         dataKey="value"
                       >
                         {dadosPizza.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip 
-                        formatter={formatarValorTooltip}
-                        contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#000' }}
-                        itemStyle={{ color: '#000', fontWeight: 'bold' }}
-                        labelStyle={{ color: '#000', fontWeight: 'bold' }}
-                      />
+                      <Tooltip formatter={formatarValorTooltip} />
+                      <Legend wrapperStyle={{fontSize: '12px'}}/>
                     </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center text-gray-700">
-                    Nenhum dado disponível para o período selecionado
-                  </div>
-                )}
+                </ResponsiveContainer>
               </div>
-            </div>
 
-            {/* Gráfico de Linha - Evolução */}
-            <div className="bg-white p-6 rounded-lg shadow-md border border-gray-100">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Evolução {filtroTempo === "mensal" ? "Mensal" : filtroTempo === "semestral" ? "Semestral" : "Anual"}</h3>
-              {dadosEvolucaoArray.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={dadosEvolucaoArray}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="periodo" tick={{ fontSize: 12, fill: '#000' }} />
-                    <YAxis tick={{ fontSize: 12, fill: '#000' }} />
-                    <Tooltip 
-                      formatter={formatarValorTooltip}
-                      contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#000' }}
-                      itemStyle={{ color: '#000', fontWeight: 'bold' }}
-                      labelStyle={{ color: '#000', fontWeight: 'bold' }}
-                    />
-                    <Legend wrapperStyle={{ color: '#000' }} />
-                    <Line 
-                      type="monotone" 
-                      dataKey="total" 
-                      stroke="#003366" 
-                      strokeWidth={3}
-                      dot={{ fill: "#003366", r: 5 }}
-                      activeDot={{ r: 7 }}
-                    />
+              {/* Evolução */}
+              <div className="bg-white p-6 rounded-lg shadow h-[400px] border border-gray-100 md:col-span-2">
+                <h3 className="font-bold text-gray-700 mb-6 flex items-center gap-2 border-b pb-2">Evolução Temporal</h3>
+                <ResponsiveContainer width="100%" height="85%">
+                  <LineChart data={dadosEvolucao}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false}/>
+                    <XAxis dataKey="periodo" tick={{fontSize: 12, fill: '#333'}} />
+                    <YAxis tick={{fontSize: 12, fill: '#333'}} />
+                    <Tooltip formatter={formatarValorTooltip} />
+                    <Legend />
+                    <Line type="monotone" dataKey="total" stroke="#003366" strokeWidth={3} dot={{r: 4}} activeDot={{r: 6}} />
                   </LineChart>
                 </ResponsiveContainer>
-              ) : (
-                <div className="h-[300px] flex items-center justify-center text-gray-700">
-                  Nenhum dado disponível para o período selecionado
-                </div>
-              )}
+              </div>
             </div>
           </div>
         )}
 
-        {/* Aba Lançamentos */}
+        {/* === LANÇAMENTOS === */}
         {abaAtiva === "lancamentos" && (
-          <div className="space-y-8">
-            <h2 className="text-3xl font-bold text-gray-900">Lançamentos</h2>
-            
-            {/* Formulário */}
-            <div className="bg-white p-6 rounded-lg shadow-md border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold text-gray-900">
-                  {editandoCompra ? "Editar Compra" : "Nova Compra"}
+          <div className="space-y-6">
+             <div className="bg-white p-6 rounded-lg shadow border border-gray-100">
+                <h3 className="font-bold text-gray-900 mb-6 text-lg flex items-center gap-2 border-b pb-2">
+                    {editandoCompra ? <Edit2 size={20}/> : <Plus size={20}/>}
+                    {editandoCompra ? 'Editar Lançamento' : 'Novo Lançamento'}
                 </h3>
-                {editandoCompra && (
-                  <button
-                    onClick={cancelarEdicaoCompra}
-                    className="text-gray-600 hover:text-gray-900"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                )}
-              </div>
-              <form onSubmit={salvarCompra} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-1">
-                      Data
-                    </label>
-                    <input
-                      type="date"
-                      value={formCompra.data}
-                      onChange={(e) => setFormCompra({ ...formCompra, data: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003366] focus:border-transparent text-gray-900"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-1">
-                      Fornecedor
-                    </label>
-                    <select
-                      value={formCompra.fornecedor}
-                      onChange={(e) => setFormCompra({ ...formCompra, fornecedor: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003366] focus:border-transparent text-gray-900 bg-white"
-                      required
-                    >
-                      <option value="">Selecione um fornecedor</option>
-                      {fornecedores.map(fornecedor => (
-                        <option key={fornecedor.id} value={fornecedor.nome}>
-                          {fornecedor.nome}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-1">
-                    Descrição
-                  </label>
-                  <input
-                    type="text"
-                    value={formCompra.descricao}
-                    onChange={(e) => setFormCompra({ ...formCompra, descricao: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003366] focus:border-transparent text-gray-900"
-                    placeholder="Descrição da compra"
-                    required
-                  />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-1">
-                      Valor
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={formCompra.valor}
-                      onChange={(e) => setFormCompra({ ...formCompra, valor: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003366] focus:border-transparent text-gray-900"
-                      placeholder="0.00"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-1">
-                      Condição de Pagamento
-                    </label>
-                    <select
-                      value={formCompra.condicaoPagamento}
-                      onChange={(e) => setFormCompra({ ...formCompra, condicaoPagamento: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003366] focus:border-transparent text-gray-900 bg-white"
-                    >
-                      <option value="">Selecione</option>
-                      {CONDICOES_PAGAMENTO.map(cond => (
-                        <option key={cond} value={cond}>{cond}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-1">
-                      Data Prevista Faturamento
-                    </label>
-                    <input
-                      type="date"
-                      value={formCompra.dataPrevistaFaturamento}
-                      onChange={(e) => setFormCompra({ ...formCompra, dataPrevistaFaturamento: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003366] focus:border-transparent text-gray-900"
-                    />
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  className="w-full md:w-auto px-6 py-2 bg-[#003366] text-white rounded-lg hover:bg-[#004080] transition-colors font-medium flex items-center gap-2 justify-center"
-                >
-                  {editandoCompra ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                  {editandoCompra ? "Salvar Alteração" : "Adicionar Compra"}
-                </button>
-              </form>
-            </div>
+                <form onSubmit={handleSalvarCompra} className="grid md:grid-cols-2 gap-6">
+                   <div>
+                       <label className="block text-sm font-semibold text-gray-600 mb-1">Data</label>
+                       <input type="date" value={formCompra.data} onChange={e => setFormCompra({...formCompra, data: e.target.value})} className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]" required />
+                   </div>
+                   <div>
+                       <label className="block text-sm font-semibold text-gray-600 mb-1">Fornecedor</label>
+                       <select value={formCompra.fornecedor} onChange={e => setFormCompra({...formCompra, fornecedor: e.target.value})} className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]" required>
+                          <option value="">Selecione...</option>
+                          {fornecedores.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}
+                       </select>
+                   </div>
+                   <div className="md:col-span-2">
+                       <label className="block text-sm font-semibold text-gray-600 mb-1">Descrição</label>
+                       <input type="text" value={formCompra.descricao} onChange={e => setFormCompra({...formCompra, descricao: e.target.value})} placeholder="Ex: Compra de matéria-prima" className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]" required />
+                   </div>
+                   <div>
+                       <label className="block text-sm font-semibold text-gray-600 mb-1">Valor (R$)</label>
+                       <input type="number" step="0.01" value={formCompra.valor} onChange={e => setFormCompra({...formCompra, valor: e.target.value})} placeholder="0.00" className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]" required />
+                   </div>
+                   <div>
+                       <label className="block text-sm font-semibold text-gray-600 mb-1">Pagamento</label>
+                       <select value={formCompra.condicaoPagamento} onChange={e => setFormCompra({...formCompra, condicaoPagamento: e.target.value})} className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]">
+                          <option value="">Selecione...</option>
+                          {CONDICOES_PAGAMENTO.map(c => <option key={c} value={c}>{c}</option>)}
+                       </select>
+                   </div>
+                   
+                   <div className="md:col-span-2 flex gap-3 mt-4">
+                       <button type="submit" disabled={isLoading} className="flex-1 bg-[#003366] text-white p-3 rounded font-bold hover:bg-blue-900 transition flex justify-center gap-2 items-center">
+                         {isLoading ? <Loader2 className="animate-spin"/> : (editandoCompra ? <Save size={18}/> : <Plus size={18}/>)} 
+                         {editandoCompra ? 'Salvar Alterações' : 'Adicionar Compra'}
+                       </button>
+                       {editandoCompra && (
+                           <button type="button" onClick={cancelarEdicaoCompra} className="bg-gray-200 text-gray-700 p-3 rounded font-bold hover:bg-gray-300 transition">
+                               Cancelar
+                           </button>
+                       )}
+                   </div>
+                </form>
+             </div>
 
-            {/* Tabela de Compras */}
-            <div className="bg-white p-6 rounded-lg shadow-md border border-gray-100">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Histórico de Compras</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Data</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Fornecedor</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Descrição</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Pagamento</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Faturamento</th>
-                      <th className="text-right py-3 px-4 text-sm font-semibold text-gray-900">Valor</th>
-                      <th className="text-center py-3 px-4 text-sm font-semibold text-gray-900">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {compras.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="text-center py-8 text-gray-700">
-                          Nenhuma compra registrada ainda.
-                        </td>
-                      </tr>
-                    ) : (
-                      [...compras].reverse().map(compra => (
-                        <tr key={compra.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => iniciarEdicaoCompra(compra)}>
-                          <td className="py-3 px-4 text-sm text-gray-900">{formatarData(compra.data)}</td>
-                          <td className="py-3 px-4 text-sm text-gray-900">{compra.fornecedor}</td>
-                          <td className="py-3 px-4 text-sm text-gray-900">{compra.descricao}</td>
-                          <td className="py-3 px-4 text-sm text-gray-700">{compra.condicaoPagamento || "-"}</td>
-                          <td className="py-3 px-4 text-sm text-gray-700">{compra.dataPrevistaFaturamento ? formatarData(compra.dataPrevistaFaturamento) : "-"}</td>
-                          <td className="py-3 px-4 text-sm text-gray-900 font-semibold text-right">
-                            {formatarValor(compra.valor)}
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); iniciarEdicaoCompra(compra); }}
-                                className="p-1 text-[#003366] hover:bg-blue-50 rounded transition-colors"
-                                title="Editar"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); removerCompra(compra.id); }}
-                                className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                                title="Remover"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+             {/* TABELA */}
+             <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-100">
+                <div className="p-4 bg-gray-50 border-b font-bold text-gray-700 flex justify-between items-center">
+                    <span>Histórico Recente</span>
+                    <span className="text-xs bg-gray-200 px-2 py-1 rounded text-gray-600">{compras.length} registros</span>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-50 text-gray-700 uppercase text-xs">
+                        <tr><th className="p-4">Data</th><th className="p-4">Fornecedor</th><th className="p-4">Descrição</th><th className="p-4 text-right">Valor</th><th className="p-4 text-center">Ações</th></tr>
+                    </thead>
+                    <tbody className="divide-y">
+                        {compras.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-gray-500 italic">Sem registros encontrados.</td></tr>}
+                        {[...compras].reverse().map(c => (
+                            <tr key={c.id} className="hover:bg-blue-50/50 transition cursor-default">
+                                <td className="p-4 text-gray-900">{formatarData(c.data)}</td>
+                                <td className="p-4 text-gray-900 font-medium">{c.fornecedor}</td>
+                                <td className="p-4 text-gray-600">{c.descricao}</td>
+                                <td className="p-4 text-right font-bold text-[#003366]">{formatarValor(c.valor)}</td>
+                                <td className="p-4 flex justify-center gap-2">
+                                <button onClick={() => iniciarEdicaoCompra(c)} className="text-blue-600 hover:bg-blue-100 p-1.5 rounded" title="Editar"><Edit2 size={16}/></button>
+                                <button onClick={() => handleRemoverCompra(c.id)} className="text-red-600 hover:bg-red-100 p-1.5 rounded" title="Excluir"><Trash2 size={16}/></button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                    </table>
+                </div>
+             </div>
           </div>
         )}
 
-        {/* Aba Fornecedores */}
+        {/* === ABA FORNECEDORES === */}
         {abaAtiva === "fornecedores" && (
-          <div className="space-y-8"> 
-            <h2 className="text-3xl font-bold text-gray-900">Fornecedores</h2>
-            
-            {/* Formulário */}
-            <div className="bg-white p-6 rounded-lg shadow-md border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold text-gray-900">
-                  {editandoFornecedor ? "Editar Fornecedor" : "Adicionar Fornecedor"}
-                </h3>
-                {editandoFornecedor && (
-                  <button
-                    onClick={cancelarEdicaoFornecedor}
-                    className="text-gray-600 hover:text-gray-900"
-                  >
-                    <X className="w-5 h-5" />
+           <div className="space-y-6">
+              <div className="flex justify-end">
+                  {/* BOTÃO RESTAURAR PADRÃO */}
+                  <button onClick={handleRestaurarFornecedores} className="flex items-center gap-2 text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded transition font-medium shadow-sm border border-gray-300">
+                      <RefreshCcw size={16}/> Restaurar Iniciais
                   </button>
-                )}
               </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-1">
-                    Nome do Fornecedor
-                  </label>
-                  <input
-                    type="text"
-                    value={formFornecedor.nome}
-                    onChange={(e) => setFormFornecedor({ ...formFornecedor, nome: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003366] focus:border-transparent text-gray-900"
-                    placeholder="Nome do fornecedor"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-1">
-                    Contato
-                  </label>
-                  <input
-                    type="text"
-                    value={formFornecedor.contato}
-                    onChange={(e) => setFormFornecedor({ ...formFornecedor, contato: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003366] focus:border-transparent text-gray-900"
-                    placeholder="Email, telefone, etc."
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    Categorias Fornecidas
-                  </label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {CATEGORIAS_PADRAO.map(categoria => (
-                      <label key={categoria} className="flex items-center gap-2 p-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
-                        <input
-                          type="checkbox"
-                          checked={formFornecedor.categorias_fornecidas.includes(categoria)}
-                          onChange={() => toggleCategoriaFornecedor(categoria)}
-                          className="w-4 h-4 text-[#003366] focus:ring-[#003366]"
-                        />
-                        <span className="text-sm text-gray-900">{categoria}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  onClick={salvarFornecedor}
-                  className="w-full md:w-auto px-6 py-2 bg-[#003366] text-white rounded-lg hover:bg-[#004080] transition-colors font-medium flex items-center gap-2"
-                >
-                  {editandoFornecedor ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                  {editandoFornecedor ? "Salvar Alteração" : "Adicionar Fornecedor"}
-                </button>
-              </div>
-            </div>
 
-            {/* Lista de fornecedores */}
-            <div className="bg-white p-6 rounded-lg shadow-md border border-gray-100">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Lista de Fornecedores</h3>
-              {fornecedores.length === 0 ? (
-                <p className="text-center py-8 text-gray-700">Nenhum fornecedor cadastrado.</p>
-              ) : (
-                <div className="space-y-3">
-                  {fornecedores.map(fornecedor => (
-                    <div
-                      key={fornecedor.id}
-                      className="p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="text-lg font-semibold text-gray-900">{fornecedor.nome}</h4>
-                          {fornecedor.contato && (
-                            <p className="text-sm text-gray-700 mt-1">Contato: {fornecedor.contato}</p>
-                          )}
-                          {fornecedor.categorias_fornecidas.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {fornecedor.categorias_fornecidas.map(cat => (
-                                <span key={cat} className="px-2 py-1 bg-[#003366]/10 text-[#003366] text-xs rounded-full">
-                                  {cat}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => iniciarEdicaoFornecedor(fornecedor)}
-                            className="p-2 text-[#003366] hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Editar"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => removerFornecedor(fornecedor.id)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Remover"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
+              <div className="bg-white p-6 rounded-lg shadow border border-gray-100">
+                 <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2 border-b pb-2">
+                     <Users size={20}/> {editandoFornecedor ? 'Editar Fornecedor' : 'Cadastrar Fornecedor'}
+                 </h3>
+                 <div className="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-600 mb-1">Nome da Empresa</label>
+                        <input value={formFornecedor.nome} onChange={e => setFormFornecedor({...formFornecedor, nome: e.target.value})} placeholder="Ex: Zanoti" className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]" />
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Aba Planejamento */}
-        {abaAtiva === "planejamento" && (
-          <div className="space-y-8">
-            <h2 className="text-3xl font-bold text-gray-900">Checklist de Compras</h2>
-            
-            {/* Resumo */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white p-6 rounded-lg shadow-md border border-gray-100">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Total de Fornecedores</h3>
-                <p className="text-3xl font-bold text-[#003366]">{totalPlanejado}</p>
-              </div>
-              <div className="bg-white p-6 rounded-lg shadow-md border border-gray-100">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Fornecedores Comprados</h3>
-                <p className="text-3xl font-bold text-gray-900">{totalRealizado} / {totalPlanejado}</p>
-              </div>
-            </div>
-            
-            {/* Gráfico de progresso */}
-            <div className="bg-white p-6 rounded-lg shadow-md border border-gray-100">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Progresso de Compras</h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={[{ name: "Total", valor: totalPlanejado }, { name: "Comprados", valor: totalRealizado }]}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#000' }} />
-                  <YAxis tick={{ fontSize: 12, fill: '#000' }} />
-                  <Tooltip 
-                    formatter={formatarValorTooltip}
-                    contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#000' }}
-                    itemStyle={{ color: '#000', fontWeight: 'bold' }}
-                    labelStyle={{ color: '#000', fontWeight: 'bold' }}
-                  />
-                  <Bar dataKey="valor" fill="#003366" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Checklist de Fornecedores */}
-            <div className="bg-white p-6 rounded-lg shadow-md border border-gray-100">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Checklist de Fornecedores (Mês Atual)</h3>
-              {fornecedores.length === 0 ? (
-                <p className="text-center py-8 text-gray-700">Nenhum fornecedor cadastrado. Adicione fornecedores na aba "Fornecedores".</p>
-              ) : (
-                <div className="space-y-4">
-                  {fornecedores.map(fornecedor => {
-                    const itemChecklist = checklistMesAtualPlanejamento.find(item => item.fornecedorId === fornecedor.id);
-                    const comprado = itemChecklist?.comprado || false;
-                    const compraAssociada = itemChecklist?.compraId ? compras.find(c => c.id === itemChecklist.compraId) : null;
-                    const comprasDoFornecedor = compras.filter(c => c.fornecedor === fornecedor.nome);
-
-                    return (
-                      <div
-                        key={fornecedor.id}
-                        className={`p-4 rounded-lg border-2 transition-colors ${
-                          comprado 
-                            ? 'bg-green-50 border-green-200' 
-                            : 'bg-gray-50 border-gray-200'
-                        }`}
-                      >
-                        <div className="flex items-start gap-4">
-                          <div className="flex items-center pt-1">
-                            <input
-                              type="checkbox"
-                              checked={comprado}
-                              onChange={() => toggleFornecedorChecklist(fornecedor.id)}
-                              className="w-5 h-5 text-[#003366] focus:ring-[#003366] cursor-pointer"
-                            />
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between mb-2">
-                              <h4 className="text-lg font-semibold text-gray-900">{fornecedor.nome}</h4>
-                              {comprado && (
-                                <span className="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">
-                                  Comprado
-                                </span>
-                              )}
-                            </div>
-
-                            {comprado && (
-                              <div className="mt-4 space-y-3">
-                                {/* Seleção de Compra */}
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-900 mb-1">
-                                    Compra Associada
-                                  </label>
-                                  <div className="flex gap-2">
-                                    <select
-                                      value={itemChecklist?.compraId || ""}
-                                      onChange={(e) => {
-                                        if (e.target.value === "nova") {
-                                          criarCompraDoPlanejamento(fornecedor.id);
-                                        } else {
-                                          atualizarChecklistFornecedor(fornecedor.id, 'compraId', e.target.value);
-                                        }
-                                      }}
-                                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003366] focus:border-transparent text-gray-900 bg-white"
-                                    >
-                                      <option value="">Selecione uma compra</option>
-                                      {comprasDoFornecedor.map(compra => (
-                                        <option key={compra.id} value={compra.id}>
-                                          {formatarData(compra.data)} - {compra.descricao} ({formatarValor(compra.valor)})
-                                        </option>
-                                      ))}
-                                      <option value="nova">+ Criar Nova Compra</option>
-                                    </select>
-                                    {compraAssociada && (
-                                      <button
-                                        onClick={() => {
-                                          setAbaAtiva("lancamentos");
-                                          setTimeout(() => iniciarEdicaoCompra(compraAssociada), 100);
-                                        }}
-                                        className="px-4 py-2 bg-[#003366] text-white rounded-lg hover:bg-[#004080] transition-colors text-sm font-medium"
-                                      >
-                                        Ver/Editar
-                                      </button>
-                                    )}
-                                  </div>
-                                  {compraAssociada && (
-                                    <p className="mt-1 text-sm text-gray-700">
-                                      {formatarData(compraAssociada.data)} - {formatarValor(compraAssociada.valor)}
-                                    </p>
-                                  )}
-                                </div>
-
-                                {/* Observação */}
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-900 mb-1">
-                                    Observação
-                                  </label>
-                                  <textarea
-                                    value={itemChecklist?.observacao || ""}
-                                    onChange={(e) => atualizarChecklistFornecedor(fornecedor.id, 'observacao', e.target.value)}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003366] focus:border-transparent text-gray-900"
-                                    rows={2}
-                                    placeholder="Adicione uma observação sobre esta compra..."
-                                  />
-                                </div>
-                              </div>
-                            )}
-                          </div>
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-600 mb-1">Contato</label>
+                        <input value={formFornecedor.contato} onChange={e => setFormFornecedor({...formFornecedor, contato: e.target.value})} placeholder="Email / Telefone" className="w-full border p-2 rounded text-gray-900 focus:ring-2 focus:ring-[#003366]" />
+                    </div>
+                    
+                    <div className="md:col-span-2">
+                        <label className="block text-sm font-semibold text-gray-600 mb-2">Categorias Fornecidas</label>
+                        <div className="flex flex-wrap gap-2">
+                            {CATEGORIAS_PADRAO.map(cat => (
+                                <button key={cat} onClick={() => toggleCategoriaFornecedor(cat)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition ${formFornecedor.categorias_fornecidas.includes(cat) ? 'bg-[#003366] text-white border-[#003366]' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                                    {cat}
+                                </button>
+                            ))}
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-        </div>
+                    </div>
+
+                    <div className="md:col-span-2 flex gap-3 mt-2">
+                        <button onClick={handleSalvarFornecedor} disabled={isLoading} className="flex-1 bg-[#003366] text-white p-3 rounded font-bold hover:bg-blue-900 transition flex justify-center items-center gap-2">
+                            {isLoading ? <Loader2 className="animate-spin"/> : <Save size={18}/>}
+                            {editandoFornecedor ? 'Salvar' : 'Cadastrar'}
+                        </button>
+                        {editandoFornecedor && (
+                            <button onClick={cancelarEdicaoFornecedor} className="bg-gray-200 text-gray-700 p-3 rounded font-bold hover:bg-gray-300 transition">
+                                Cancelar
+                            </button>
+                        )}
+                    </div>
+                 </div>
+              </div>
+
+              {/* LISTA */}
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                 {fornecedores.map(f => (
+                    <div key={f.id} className="bg-white p-5 rounded-lg shadow-sm border border-gray-200 flex justify-between items-start hover:shadow-md transition">
+                       <div>
+                          <h4 className="font-bold text-gray-900 text-lg">{f.nome}</h4>
+                          <p className="text-sm text-gray-500 mb-3">{f.contato || 'Sem contato registrado'}</p>
+                          <div className="flex flex-wrap gap-1">
+                              {f.categorias_fornecidas.map(c => (
+                                  <span key={c} className="text-[10px] bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100 font-medium">
+                                      {c}
+                                  </span>
+                              ))}
+                          </div>
+                       </div>
+                       <div className="flex gap-1">
+                          <button onClick={() => iniciarEdicaoFornecedor(f)} className="text-blue-600 hover:bg-blue-50 p-2 rounded transition"><Edit2 size={18}/></button>
+                          <button onClick={() => handleRemoverFornecedor(f.id)} className="text-red-600 hover:bg-red-50 p-2 rounded transition"><Trash2 size={18}/></button>
+                       </div>
+                    </div>
+                 ))}
+              </div>
+           </div>
         )}
+
+        {/* === ABA PLANEJAMENTO === */}
+        {abaAtiva === "planejamento" && (
+           <div className="space-y-6">
+              <div className="bg-white p-6 rounded-lg shadow border border-gray-100 flex items-center justify-between">
+                <div>
+                    <p className="text-gray-500 text-xs uppercase font-bold tracking-wider">Progresso de Compras ({mesAtual})</p>
+                    <div className="flex items-end gap-2">
+                        <p className="text-3xl font-bold text-[#003366]">
+                            {checklistFornecedores.filter(c => c.mes === mesAtual && c.comprado).length}
+                            <span className="text-gray-400 text-lg"> / {fornecedores.length}</span>
+                        </p>
+                    </div>
+                </div>
+                <div className="h-12 w-12 bg-blue-50 rounded-full flex items-center justify-center text-[#003366]">
+                    <Target size={24}/>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-100">
+                 <div className="p-4 border-b bg-gray-50 font-bold text-gray-700 flex items-center gap-2">
+                     <CheckSquare size={18}/> Checklist Mensal
+                 </div>
+                 <div className="divide-y">
+                    {fornecedores.map(f => {
+                       const item = checklistFornecedores.find(c => c.fornecedorId === f.id && c.mes === mesAtual);
+                       const comprado = item?.comprado || false;
+                       return (
+                          <div key={f.id} className={`p-4 flex items-start gap-4 transition ${comprado ? 'bg-green-50/60' : 'hover:bg-gray-50'}`}>
+                             <input 
+                                type="checkbox" 
+                                checked={comprado} 
+                                onChange={() => handleToggleChecklist(f.id)} 
+                                className="mt-1 w-6 h-6 text-[#003366] rounded focus:ring-[#003366] cursor-pointer" 
+                             />
+                             <div className="flex-1">
+                                <div className="flex justify-between items-center">
+                                   <span className={`font-bold text-lg ${comprado ? 'text-green-800 line-through decoration-green-800/30' : 'text-gray-900'}`}>{f.nome}</span>
+                                   {comprado ? (
+                                       <span className="text-xs bg-green-200 text-green-900 px-3 py-1 rounded-full font-bold">COMPRADO</span>
+                                   ) : (
+                                       <button onClick={() => criarCompraDoPlanejamento(f.id)} className="text-xs bg-[#003366] hover:bg-blue-900 text-white px-3 py-1.5 rounded font-medium transition shadow-sm">
+                                           + Gerar Compra
+                                       </button>
+                                   )}
+                                </div>
+                                <div className="mt-1 text-sm text-gray-500">
+                                    {comprado ? "Já registrado no sistema." : "Pendente de compra para este mês."}
+                                </div>
+                             </div>
+                          </div>
+                       )
+                    })}
+                 </div>
+              </div>
+           </div>
+        )}
+
       </main>
     </div>
   );
 }
+
+// Git commands
+// git add .
+// git commit -m "Fix dashboard and enable restore feature"
+// git push origin main
