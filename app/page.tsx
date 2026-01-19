@@ -2,8 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
-import { ShoppingCart, DollarSign, Users, TrendingUp, Plus, Trash2, Edit2, Save, X, Calendar, Target, CheckSquare, Lock } from "lucide-react";
+import { ShoppingCart, DollarSign, Users, TrendingUp, Plus, Trash2, Edit2, Save, X, Calendar, Target, CheckSquare, Lock, Loader2 } from "lucide-react";
+// Importar as Server Actions criadas
+import { getFornecedores, saveFornecedor, deleteFornecedor, getCompras, saveCompra, deleteCompra, getChecklist, saveChecklistItem } from "./actions";
 
+// --- INTERFACES ---
 interface Compra {
   id: string;
   data: string;
@@ -41,6 +44,7 @@ export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [loginForm, setLoginForm] = useState({ usuario: "", senha: "" });
   const [loginError, setLoginError] = useState("");
+  const [isLoading, setIsLoading] = useState(false); // Novo estado de carregamento
 
   const [abaAtiva, setAbaAtiva] = useState<Aba>("dashboard");
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
@@ -79,104 +83,34 @@ export default function Home() {
     }
   }, []);
 
-  // Migração de dados antigos e carregamento inicial
-  useEffect(() => {
-    if (!isAuthenticated) return; // Só carregar dados se autenticado
-    
+  // --- CARREGAMENTO DE DADOS DO BANCO (POSTGRES) ---
+  const carregarDadosDoBanco = async () => {
+    if (!isAuthenticated) return;
+    setIsLoading(true);
     try {
-      // Carregar fornecedores com migração
-      const fornecedoresSalvos = localStorage.getItem("fornecedores");
-      if (fornecedoresSalvos) {
-        try {
-          const dados = JSON.parse(fornecedoresSalvos);
-          // Verificar se é formato antigo (array de strings ou objetos simples)
-          if (Array.isArray(dados) && dados.length > 0) {
-            if (typeof dados[0] === 'string' || (dados[0].nome && !dados[0].categorias_fornecidas)) {
-              // Migrar formato antigo
-              const fornecedoresMigrados: Fornecedor[] = dados.map((item: any, index: number) => ({
-                id: typeof item === 'string' ? `forn-${index}` : item.id || `forn-${index}`,
-                nome: typeof item === 'string' ? item : item.nome,
-                categorias_fornecidas: [],
-                contato: "",
-              }));
-              setFornecedores(fornecedoresMigrados);
-              localStorage.setItem("fornecedores", JSON.stringify(fornecedoresMigrados));
-            } else {
-              setFornecedores(dados);
-            }
-          }
-        } catch (e) {
-          console.error("Erro ao carregar fornecedores:", e);
-          inicializarFornecedoresPadrao();
-        }
-      } else {
-        inicializarFornecedoresPadrao();
-      }
+      const [dadosFornecedores, dadosCompras, dadosChecklist] = await Promise.all([
+        getFornecedores(),
+        getCompras(),
+        getChecklist()
+      ]);
 
-      // Carregar compras
-      const comprasSalvas = localStorage.getItem("compras");
-      if (comprasSalvas) {
-        try {
-          const dados = JSON.parse(comprasSalvas);
-          // Migrar compras antigas (sem novos campos)
-          const comprasMigradas: Compra[] = dados.map((compra: any) => ({
-            ...compra,
-            condicaoPagamento: compra.condicaoPagamento || "",
-            dataPrevistaFaturamento: compra.dataPrevistaFaturamento || "",
-          }));
-          setCompras(comprasMigradas);
-          localStorage.setItem("compras", JSON.stringify(comprasMigradas));
-        } catch (e) {
-          console.error("Erro ao carregar compras:", e);
-          setCompras([]);
-        }
-      }
-
-      // Carregar checklist de planejamento
-      const checklistSalvo = localStorage.getItem("checklistFornecedores");
-      if (checklistSalvo) {
-        try {
-          setChecklistFornecedores(JSON.parse(checklistSalvo));
-        } catch (e) {
-          console.error("Erro ao carregar checklist:", e);
-          setChecklistFornecedores([]);
-        }
-      }
+      setFornecedores(dadosFornecedores);
+      setCompras(dadosCompras);
+      setChecklistFornecedores(dadosChecklist);
     } catch (error) {
-      console.error("Erro geral ao carregar dados:", error);
-      // Inicializar valores padrão em caso de erro
-      inicializarFornecedoresPadrao();
+      console.error("Erro ao carregar dados do banco:", error);
+    } finally {
+      setIsLoading(false);
     }
-  }, []);
-
-  const inicializarFornecedoresPadrao = () => {
-    const fornecedoresIniciais: Fornecedor[] = [
-      "Delfa", "Zanoti", "Fermoplast", "Modelle", "Águas Cristal",
-      "Top Bojos", "Etax", "Mercado (Atacado)", "Midlab", "Mercado Livre"
-    ].map((nome, index) => ({
-      id: `forn-${Date.now()}-${index}`,
-      nome,
-      categorias_fornecidas: [],
-      contato: "",
-    }));
-    setFornecedores(fornecedoresIniciais);
-    localStorage.setItem("fornecedores", JSON.stringify(fornecedoresIniciais));
   };
 
-  // Salvar dados no LocalStorage
   useEffect(() => {
-    if (fornecedores.length > 0) {
-      localStorage.setItem("fornecedores", JSON.stringify(fornecedores));
+    if (isAuthenticated) {
+      carregarDadosDoBanco();
     }
-  }, [fornecedores]);
+  }, [isAuthenticated]);
 
-  useEffect(() => {
-    localStorage.setItem("compras", JSON.stringify(compras));
-  }, [compras]);
-
-  useEffect(() => {
-    localStorage.setItem("checklistFornecedores", JSON.stringify(checklistFornecedores));
-  }, [checklistFornecedores]);
+  // --- LÓGICA DE DADOS (CÁLCULOS) ---
 
   // Calcular total gasto (respeitando filtros)
   const comprasFiltradas = filtroFornecedor === "todos"
@@ -204,9 +138,13 @@ export default function Home() {
   const comprasDoPlanejamento = checklistMesAtual
     .filter(item => item.comprado && item.compraId)
     .map(item => compras.find(c => c.id === item.compraId))
-    .filter((c): c is Compra => c !== null);
+    .filter((c): c is Compra => c !== undefined);
   
-  const comprasParaDashboard = [...comprasFiltradas, ...comprasDoPlanejamento.filter(c => !comprasFiltradas.some(cf => cf.id === c.id))];
+  const comprasParaDashboard = [
+    ...comprasFiltradas, 
+    ...comprasDoPlanejamento.filter(c => !comprasFiltradas.some(cf => cf.id === c.id) && (filtroFornecedor === "todos" || c.fornecedor === filtroFornecedor))
+  ];
+  
   const comprasParaGraficos = aplicarFiltroTempo(comprasParaDashboard);
   const totalGasto = comprasParaDashboard.reduce((acc, compra) => acc + compra.valor, 0);
 
@@ -226,7 +164,7 @@ export default function Home() {
     value: item.total
   }));
 
-  // Dados para gráfico de evolução (agrupa por período conforme filtro)
+  // Dados para gráfico de evolução
   const dadosEvolucao = comprasParaGraficos.reduce((acc: { [key: string]: { total: number; timestamp: number } }, compra) => {
     const data = new Date(compra.data);
     let chave: string;
@@ -256,7 +194,8 @@ export default function Home() {
     .sort((a, b) => a.timestamp - b.timestamp)
     .map(({ periodo, total }) => ({ periodo, total }));
 
-  // Funções de fornecedores
+  // --- FUNÇÕES DE AÇÃO (Conectadas ao Backend) ---
+
   const iniciarEdicaoFornecedor = (fornecedor: Fornecedor) => {
     setFormFornecedor({
       id: fornecedor.id,
@@ -272,26 +211,29 @@ export default function Home() {
     setEditandoFornecedor(false);
   };
 
-  const salvarFornecedor = () => {
+  const salvarFornecedor = async () => {
     if (!formFornecedor.nome.trim()) return;
-    
-    if (editandoFornecedor) {
-      setFornecedores(fornecedores.map(f => f.id === formFornecedor.id ? formFornecedor : f));
-    } else {
-      const novo: Fornecedor = {
-        id: `forn-${Date.now()}`,
+    setIsLoading(true);
+
+    const payload = {
+        id: editandoFornecedor ? formFornecedor.id : null,
         nome: formFornecedor.nome.trim(),
         categorias_fornecidas: formFornecedor.categorias_fornecidas,
-        contato: formFornecedor.contato.trim(),
-      };
-      setFornecedores([...fornecedores, novo]);
-    }
+        contato: formFornecedor.contato.trim()
+    };
+
+    await saveFornecedor(payload);
+    await carregarDadosDoBanco();
     cancelarEdicaoFornecedor();
+    setIsLoading(false);
   };
 
-  const removerFornecedor = (id: string) => {
+  const handleRemoverFornecedor = async (id: string) => {
     if (confirm("Tem certeza que deseja remover este fornecedor?")) {
-      setFornecedores(fornecedores.filter(f => f.id !== id));
+      setIsLoading(true);
+      await deleteFornecedor(id);
+      await carregarDadosDoBanco();
+      setIsLoading(false);
     }
   };
 
@@ -304,7 +246,6 @@ export default function Home() {
     }
   };
 
-  // Funções de compras
   const iniciarEdicaoCompra = (compra: Compra) => {
     setFormCompra({
       id: compra.id,
@@ -331,12 +272,13 @@ export default function Home() {
     setEditandoCompra(false);
   };
 
-  const salvarCompra = (e: React.FormEvent) => {
+  const salvarCompraDoFormulario = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formCompra.fornecedor || !formCompra.descricao || !formCompra.valor) return;
+    setIsLoading(true);
 
-    const compraAtualizada: Compra = {
-      id: editandoCompra ? formCompra.id : `compra-${Date.now()}`,
+    const payload = {
+      id: editandoCompra ? formCompra.id : null,
       data: formCompra.data,
       fornecedor: formCompra.fornecedor,
       descricao: formCompra.descricao,
@@ -345,63 +287,76 @@ export default function Home() {
       dataPrevistaFaturamento: formCompra.dataPrevistaFaturamento,
     };
 
-    if (editandoCompra) {
-      setCompras(compras.map(c => c.id === compraAtualizada.id ? compraAtualizada : c));
-    } else {
-      setCompras([...compras, compraAtualizada]);
-    }
+    await saveCompra(payload);
+    await carregarDadosDoBanco();
     cancelarEdicaoCompra();
+    setIsLoading(false);
   };
 
-  const removerCompra = (id: string) => {
+  const handleRemoverCompra = async (id: string) => {
     if (confirm("Tem certeza que deseja remover esta compra?")) {
-      setCompras(compras.filter(c => c.id !== id));
+      setIsLoading(true);
+      await deleteCompra(id);
+      await carregarDadosDoBanco();
+      setIsLoading(false);
     }
   };
 
   // Funções de planejamento (checklist)
   const checklistMesAtualPlanejamento = checklistFornecedores.filter(item => item.mes === mesAtual);
 
-  const toggleFornecedorChecklist = (fornecedorId: string) => {
-    const itemExistente = checklistMesAtualPlanejamento.find(item => item.fornecedorId === fornecedorId);
+  const toggleFornecedorChecklist = async (fornecedorId: string) => {
+    const mesAtualCheck = new Date().toISOString().slice(0, 7);
+    const itemExistente = checklistFornecedores.find(item => item.fornecedorId === fornecedorId && item.mes === mesAtualCheck);
+    
+    // Atualização Otimista (Visual)
+    const novoStatus = !itemExistente?.comprado;
+    const novosItens = [...checklistFornecedores];
     
     if (itemExistente) {
-      // Se já existe, apenas alterna o estado comprado
-      const mesAtualCheck = new Date().toISOString().slice(0, 7);
-      setChecklistFornecedores(checklistFornecedores.map(item => 
-        item.fornecedorId === fornecedorId && item.mes === mesAtualCheck
-          ? { ...item, comprado: !item.comprado, compraId: !item.comprado ? item.compraId : null }
-          : item
-      ));
+        const index = novosItens.findIndex(i => i === itemExistente);
+        novosItens[index] = { ...itemExistente, comprado: novoStatus, compraId: !novoStatus ? null : itemExistente.compraId };
     } else {
-      // Se não existe, cria novo item
-      const mesAtualCheck = new Date().toISOString().slice(0, 7);
-      const novoItem: ChecklistFornecedor = {
-        fornecedorId,
-        comprado: true,
-        compraId: null,
-        observacao: "",
-        mes: mesAtualCheck,
-      };
-      setChecklistFornecedores([...checklistFornecedores, novoItem]);
+        novosItens.push({ fornecedorId, mes: mesAtualCheck, comprado: true, compraId: null, observacao: "" });
     }
+    setChecklistFornecedores(novosItens);
+
+    // Salvar no Banco
+    await saveChecklistItem({
+        fornecedorId,
+        mes: mesAtualCheck,
+        comprado: novoStatus,
+        compraId: itemExistente?.compraId || null,
+        observacao: itemExistente?.observacao || ""
+    });
   };
 
-  const atualizarChecklistFornecedor = (fornecedorId: string, campo: 'compraId' | 'observacao', valor: string) => {
+  const atualizarChecklistFornecedor = async (fornecedorId: string, campo: 'compraId' | 'observacao', valor: string) => {
     const mesAtual = new Date().toISOString().slice(0, 7);
-    setChecklistFornecedores(checklistFornecedores.map(item =>
+    
+    // Atualização Local
+    const novosItens = checklistFornecedores.map(item =>
       item.fornecedorId === fornecedorId && item.mes === mesAtual
         ? { ...item, [campo]: valor }
         : item
-    ));
+    );
+    setChecklistFornecedores(novosItens);
+
+    // Salvar no Banco (Debounce manual ou salvar direto)
+    const itemAtualizado = novosItens.find(i => i.fornecedorId === fornecedorId && i.mes === mesAtual);
+    if(itemAtualizado) {
+        await saveChecklistItem(itemAtualizado);
+    }
   };
 
-  const criarCompraDoPlanejamento = (fornecedorId: string) => {
+  const criarCompraDoPlanejamento = async (fornecedorId: string) => {
     const fornecedor = fornecedores.find(f => f.id === fornecedorId);
     if (!fornecedor) return;
+    setIsLoading(true);
 
-    const novaCompra: Compra = {
-      id: `compra-${Date.now()}`,
+    // 1. Criar a compra zerada
+    const novaCompraPayload = {
+      id: null,
       data: new Date().toISOString().split('T')[0],
       fornecedor: fornecedor.nome,
       descricao: `Compra planejada - ${fornecedor.nome}`,
@@ -409,17 +364,28 @@ export default function Home() {
       condicaoPagamento: "",
       dataPrevistaFaturamento: "",
     };
+
+    // Salvamos a compra primeiro para ter um ID, mas como usamos Server Actions e UUID, 
+    // precisamos recarregar para pegar a última compra ou criar um ID temporário.
+    // Simplificação: Salvamos, recarregamos tudo, pegamos a última compra desse fornecedor.
+    await saveCompra(novaCompraPayload);
+    const comprasAtualizadas = await getCompras(); // Recarrega direto do servidor
+    const ultimaCompra = comprasAtualizadas.find(c => c.fornecedor === fornecedor.nome && c.valor === 0);
     
-    setCompras([...compras, novaCompra]);
-    
-    // Atualiza o checklist com o ID da nova compra
-    atualizarChecklistFornecedor(fornecedorId, 'compraId', novaCompra.id);
-    
-    // Abre a aba de lançamentos para editar a compra
-    setAbaAtiva("lancamentos");
-    setTimeout(() => {
-      iniciarEdicaoCompra(novaCompra);
-    }, 100);
+    if(ultimaCompra) {
+        // 2. Atualizar o checklist
+        await atualizarChecklistFornecedor(fornecedorId, 'compraId', ultimaCompra.id);
+        
+        // 3. Atualizar estados locais
+        setCompras(comprasAtualizadas);
+        
+        // 4. Ir para edição
+        setAbaAtiva("lancamentos");
+        setTimeout(() => {
+          iniciarEdicaoCompra(ultimaCompra);
+        }, 100);
+    }
+    setIsLoading(false);
   };
 
   // Cálculos para dashboard do planejamento
@@ -521,12 +487,12 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="bg-[#003366] text-white shadow-lg">
+      <header className="bg-[#003366] text-white shadow-lg sticky top-0 z-20">
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-3xl font-bold text-white">Walcle / Hadoli</h1>
-              <p className="text-blue-200 mt-1">ERP de Compras</p>
+              <p className="text-blue-200 mt-1">ERP de Compras (Online)</p>
             </div>
             <div className="flex items-center gap-4 bg-blue-900/50 px-6 py-3 rounded-lg">
               <DollarSign className="w-6 h-6" />
@@ -537,10 +503,16 @@ export default function Home() {
             </div>
           </div>
         </div>
+        {/* Barra de Loading */}
+        {isLoading && (
+            <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-300 overflow-hidden">
+                <div className="h-full bg-yellow-400 animate-pulse w-1/2 mx-auto"></div>
+            </div>
+        )}
       </header>
 
       {/* Navegação */}
-      <nav className="bg-white shadow-md border-b border-gray-200">
+      <nav className="bg-white shadow-md border-b border-gray-200 sticky top-[100px] z-10">
         <div className="container mx-auto px-4">
           <div className="flex gap-1 overflow-x-auto">
             <button
@@ -758,7 +730,7 @@ export default function Home() {
                   </button>
                 )}
               </div>
-              <form onSubmit={salvarCompra} className="space-y-4">
+              <form onSubmit={salvarCompraDoFormulario} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-900 mb-1">
@@ -849,9 +821,10 @@ export default function Home() {
                 </div>
                 <button
                   type="submit"
-                  className="w-full md:w-auto px-6 py-2 bg-[#003366] text-white rounded-lg hover:bg-[#004080] transition-colors font-medium flex items-center gap-2 justify-center"
+                  disabled={isLoading}
+                  className="w-full md:w-auto px-6 py-2 bg-[#003366] text-white rounded-lg hover:bg-[#004080] transition-colors font-medium flex items-center gap-2 justify-center disabled:opacity-50"
                 >
-                  {editandoCompra ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : (editandoCompra ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />)}
                   {editandoCompra ? "Salvar Alteração" : "Adicionar Compra"}
                 </button>
               </form>
@@ -901,7 +874,7 @@ export default function Home() {
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={(e) => { e.stopPropagation(); removerCompra(compra.id); }}
+                                onClick={(e) => { e.stopPropagation(); handleRemoverCompra(compra.id); }}
                                 className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
                                 title="Remover"
                               >
@@ -984,9 +957,10 @@ export default function Home() {
                 </div>
                 <button
                   onClick={salvarFornecedor}
-                  className="w-full md:w-auto px-6 py-2 bg-[#003366] text-white rounded-lg hover:bg-[#004080] transition-colors font-medium flex items-center gap-2"
+                  disabled={isLoading}
+                  className="w-full md:w-auto px-6 py-2 bg-[#003366] text-white rounded-lg hover:bg-[#004080] transition-colors font-medium flex items-center gap-2 disabled:opacity-50"
                 >
-                  {editandoFornecedor ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : (editandoFornecedor ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />)}
                   {editandoFornecedor ? "Salvar Alteração" : "Adicionar Fornecedor"}
                 </button>
               </div>
@@ -1029,7 +1003,7 @@ export default function Home() {
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => removerFornecedor(fornecedor.id)}
+                            onClick={() => handleRemoverFornecedor(fornecedor.id)}
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Remover"
                           >
