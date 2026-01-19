@@ -6,7 +6,6 @@ import { revalidatePath } from 'next/cache';
 // --- FORNECEDORES ---
 export async function getFornecedores() {
   try {
-    // Busca dados e converte nomes de coluna (snake_case) para o formato do seu app (camelCase)
     const { rows } = await sql`SELECT * FROM fornecedores ORDER BY nome ASC`;
     return rows.map(row => ({
       id: row.id,
@@ -24,7 +23,7 @@ export async function saveFornecedor(fornecedor: { id: string | null, nome: stri
   const categoriasString = fornecedor.categorias_fornecidas.join(',');
   try {
     if (fornecedor.id && fornecedor.id.length > 10) { 
-      // Atualizar (Se tiver ID longo, é UUID do banco)
+      // Atualizar
       await sql`
         UPDATE fornecedores 
         SET nome = ${fornecedor.nome}, categorias = ${categoriasString}, contato = ${fornecedor.contato}
@@ -37,7 +36,7 @@ export async function saveFornecedor(fornecedor: { id: string | null, nome: stri
         VALUES (${fornecedor.nome}, ${categoriasString}, ${fornecedor.contato})
       `;
     }
-    revalidatePath('/'); // Atualiza a tela
+    revalidatePath('/');
     return { success: true };
   } catch (error) {
     console.error('Erro ao salvar fornecedor:', error);
@@ -51,6 +50,29 @@ export async function deleteFornecedor(id: string) {
     revalidatePath('/');
     return { success: true };
   } catch (error) {
+    return { success: false };
+  }
+}
+
+// --- FUNÇÃO PARA RESTAURAR OS FORNECEDORES PADRÃO ---
+export async function restaurarFornecedoresPadrao() {
+  const listaInicial = [
+    "Delfa", "Zanoti", "Fermoplast", "Modelle", "Águas Cristal",
+    "Top Bojos", "Etax", "Mercado (Atacado)", "Midlab", "Mercado Livre"
+  ];
+
+  try {
+    for (const nome of listaInicial) {
+        // Verifica se já existe para não duplicar
+        const { rows } = await sql`SELECT id FROM fornecedores WHERE nome = ${nome}`;
+        if (rows.length === 0) {
+            await sql`INSERT INTO fornecedores (nome, categorias, contato) VALUES (${nome}, '', '')`;
+        }
+    }
+    revalidatePath('/');
+    return { success: true };
+  } catch (error) {
+    console.error("Erro ao restaurar:", error);
     return { success: false };
   }
 }
@@ -128,7 +150,6 @@ export async function getChecklist() {
 
 export async function saveChecklistItem(item: any) {
   try {
-    // Verifica se já existe registro para esse fornecedor neste mês
     const { rows } = await sql`
       SELECT id FROM checklist 
       WHERE fornecedor_id = ${item.fornecedorId} AND mes = ${item.mes}

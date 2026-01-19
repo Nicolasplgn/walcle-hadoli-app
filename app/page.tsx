@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
-import { ShoppingCart, DollarSign, Users, TrendingUp, Plus, Trash2, Edit2, Save, X, Calendar, Target, CheckSquare, Lock, Loader2 } from "lucide-react";
-// Importar as Server Actions criadas
-import { getFornecedores, saveFornecedor, deleteFornecedor, getCompras, saveCompra, deleteCompra, getChecklist, saveChecklistItem } from "./actions";
+import { ShoppingCart, DollarSign, Users, TrendingUp, Plus, Trash2, Edit2, Save, X, Calendar, Target, CheckSquare, Lock, LogOut, RefreshCcw } from "lucide-react";
+import { 
+  getFornecedores, saveFornecedor, deleteFornecedor, getCompras, 
+  saveCompra, deleteCompra, getChecklist, saveChecklistItem, 
+  restaurarFornecedoresPadrao // <--- ADICIONE ESSA IMPORTAÇÃO AQUI
+} from "./actions";
 
-// --- INTERFACES ---
 interface Compra {
   id: string;
   data: string;
@@ -44,7 +46,6 @@ export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [loginForm, setLoginForm] = useState({ usuario: "", senha: "" });
   const [loginError, setLoginError] = useState("");
-  const [isLoading, setIsLoading] = useState(false); // Novo estado de carregamento
 
   const [abaAtiva, setAbaAtiva] = useState<Aba>("dashboard");
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
@@ -83,34 +84,104 @@ export default function Home() {
     }
   }, []);
 
-  // --- CARREGAMENTO DE DADOS DO BANCO (POSTGRES) ---
-  const carregarDadosDoBanco = async () => {
-    if (!isAuthenticated) return;
-    setIsLoading(true);
+  // Migração de dados antigos e carregamento inicial
+  useEffect(() => {
+    if (!isAuthenticated) return; // Só carregar dados se autenticado
+    
     try {
-      const [dadosFornecedores, dadosCompras, dadosChecklist] = await Promise.all([
-        getFornecedores(),
-        getCompras(),
-        getChecklist()
-      ]);
+      // Carregar fornecedores com migração
+      const fornecedoresSalvos = localStorage.getItem("fornecedores");
+      if (fornecedoresSalvos) {
+        try {
+          const dados = JSON.parse(fornecedoresSalvos);
+          // Verificar se é formato antigo (array de strings ou objetos simples)
+          if (Array.isArray(dados) && dados.length > 0) {
+            if (typeof dados[0] === 'string' || (dados[0].nome && !dados[0].categorias_fornecidas)) {
+              // Migrar formato antigo
+              const fornecedoresMigrados: Fornecedor[] = dados.map((item: any, index: number) => ({
+                id: typeof item === 'string' ? `forn-${index}` : item.id || `forn-${index}`,
+                nome: typeof item === 'string' ? item : item.nome,
+                categorias_fornecidas: [],
+                contato: "",
+              }));
+              setFornecedores(fornecedoresMigrados);
+              localStorage.setItem("fornecedores", JSON.stringify(fornecedoresMigrados));
+            } else {
+              setFornecedores(dados);
+            }
+          }
+        } catch (e) {
+          console.error("Erro ao carregar fornecedores:", e);
+          inicializarFornecedoresPadrao();
+        }
+      } else {
+        inicializarFornecedoresPadrao();
+      }
 
-      setFornecedores(dadosFornecedores);
-      setCompras(dadosCompras);
-      setChecklistFornecedores(dadosChecklist);
+      // Carregar compras
+      const comprasSalvas = localStorage.getItem("compras");
+      if (comprasSalvas) {
+        try {
+          const dados = JSON.parse(comprasSalvas);
+          // Migrar compras antigas (sem novos campos)
+          const comprasMigradas: Compra[] = dados.map((compra: any) => ({
+            ...compra,
+            condicaoPagamento: compra.condicaoPagamento || "",
+            dataPrevistaFaturamento: compra.dataPrevistaFaturamento || "",
+          }));
+          setCompras(comprasMigradas);
+          localStorage.setItem("compras", JSON.stringify(comprasMigradas));
+        } catch (e) {
+          console.error("Erro ao carregar compras:", e);
+          setCompras([]);
+        }
+      }
+
+      // Carregar checklist de planejamento
+      const checklistSalvo = localStorage.getItem("checklistFornecedores");
+      if (checklistSalvo) {
+        try {
+          setChecklistFornecedores(JSON.parse(checklistSalvo));
+        } catch (e) {
+          console.error("Erro ao carregar checklist:", e);
+          setChecklistFornecedores([]);
+        }
+      }
     } catch (error) {
-      console.error("Erro ao carregar dados do banco:", error);
-    } finally {
-      setIsLoading(false);
+      console.error("Erro geral ao carregar dados:", error);
+      // Inicializar valores padrão em caso de erro
+      inicializarFornecedoresPadrao();
     }
+  }, []);
+
+  const inicializarFornecedoresPadrao = () => {
+    const fornecedoresIniciais: Fornecedor[] = [
+      "Delfa", "Zanoti", "Fermoplast", "Modelle", "Águas Cristal",
+      "Top Bojos", "Etax", "Mercado (Atacado)", "Midlab", "Mercado Livre"
+    ].map((nome, index) => ({
+      id: `forn-${Date.now()}-${index}`,
+      nome,
+      categorias_fornecidas: [],
+      contato: "",
+    }));
+    setFornecedores(fornecedoresIniciais);
+    localStorage.setItem("fornecedores", JSON.stringify(fornecedoresIniciais));
   };
 
+  // Salvar dados no LocalStorage
   useEffect(() => {
-    if (isAuthenticated) {
-      carregarDadosDoBanco();
+    if (fornecedores.length > 0) {
+      localStorage.setItem("fornecedores", JSON.stringify(fornecedores));
     }
-  }, [isAuthenticated]);
+  }, [fornecedores]);
 
-  // --- LÓGICA DE DADOS (CÁLCULOS) ---
+  useEffect(() => {
+    localStorage.setItem("compras", JSON.stringify(compras));
+  }, [compras]);
+
+  useEffect(() => {
+    localStorage.setItem("checklistFornecedores", JSON.stringify(checklistFornecedores));
+  }, [checklistFornecedores]);
 
   // Calcular total gasto (respeitando filtros)
   const comprasFiltradas = filtroFornecedor === "todos"
@@ -138,13 +209,9 @@ export default function Home() {
   const comprasDoPlanejamento = checklistMesAtual
     .filter(item => item.comprado && item.compraId)
     .map(item => compras.find(c => c.id === item.compraId))
-    .filter((c): c is Compra => c !== undefined);
+    .filter((c): c is Compra => c !== null);
   
-  const comprasParaDashboard = [
-    ...comprasFiltradas, 
-    ...comprasDoPlanejamento.filter(c => !comprasFiltradas.some(cf => cf.id === c.id) && (filtroFornecedor === "todos" || c.fornecedor === filtroFornecedor))
-  ];
-  
+  const comprasParaDashboard = [...comprasFiltradas, ...comprasDoPlanejamento.filter(c => !comprasFiltradas.some(cf => cf.id === c.id))];
   const comprasParaGraficos = aplicarFiltroTempo(comprasParaDashboard);
   const totalGasto = comprasParaDashboard.reduce((acc, compra) => acc + compra.valor, 0);
 
@@ -164,7 +231,7 @@ export default function Home() {
     value: item.total
   }));
 
-  // Dados para gráfico de evolução
+  // Dados para gráfico de evolução (agrupa por período conforme filtro)
   const dadosEvolucao = comprasParaGraficos.reduce((acc: { [key: string]: { total: number; timestamp: number } }, compra) => {
     const data = new Date(compra.data);
     let chave: string;
@@ -194,8 +261,7 @@ export default function Home() {
     .sort((a, b) => a.timestamp - b.timestamp)
     .map(({ periodo, total }) => ({ periodo, total }));
 
-  // --- FUNÇÕES DE AÇÃO (Conectadas ao Backend) ---
-
+  // Funções de fornecedores
   const iniciarEdicaoFornecedor = (fornecedor: Fornecedor) => {
     setFormFornecedor({
       id: fornecedor.id,
@@ -211,29 +277,26 @@ export default function Home() {
     setEditandoFornecedor(false);
   };
 
-  const salvarFornecedor = async () => {
+  const salvarFornecedor = () => {
     if (!formFornecedor.nome.trim()) return;
-    setIsLoading(true);
-
-    const payload = {
-        id: editandoFornecedor ? formFornecedor.id : null,
+    
+    if (editandoFornecedor) {
+      setFornecedores(fornecedores.map(f => f.id === formFornecedor.id ? formFornecedor : f));
+    } else {
+      const novo: Fornecedor = {
+        id: `forn-${Date.now()}`,
         nome: formFornecedor.nome.trim(),
         categorias_fornecidas: formFornecedor.categorias_fornecidas,
-        contato: formFornecedor.contato.trim()
-    };
-
-    await saveFornecedor(payload);
-    await carregarDadosDoBanco();
+        contato: formFornecedor.contato.trim(),
+      };
+      setFornecedores([...fornecedores, novo]);
+    }
     cancelarEdicaoFornecedor();
-    setIsLoading(false);
   };
 
-  const handleRemoverFornecedor = async (id: string) => {
+  const removerFornecedor = (id: string) => {
     if (confirm("Tem certeza que deseja remover este fornecedor?")) {
-      setIsLoading(true);
-      await deleteFornecedor(id);
-      await carregarDadosDoBanco();
-      setIsLoading(false);
+      setFornecedores(fornecedores.filter(f => f.id !== id));
     }
   };
 
@@ -246,6 +309,7 @@ export default function Home() {
     }
   };
 
+  // Funções de compras
   const iniciarEdicaoCompra = (compra: Compra) => {
     setFormCompra({
       id: compra.id,
@@ -272,13 +336,12 @@ export default function Home() {
     setEditandoCompra(false);
   };
 
-  const salvarCompraDoFormulario = async (e: React.FormEvent) => {
+  const salvarCompra = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formCompra.fornecedor || !formCompra.descricao || !formCompra.valor) return;
-    setIsLoading(true);
 
-    const payload = {
-      id: editandoCompra ? formCompra.id : null,
+    const compraAtualizada: Compra = {
+      id: editandoCompra ? formCompra.id : `compra-${Date.now()}`,
       data: formCompra.data,
       fornecedor: formCompra.fornecedor,
       descricao: formCompra.descricao,
@@ -287,76 +350,63 @@ export default function Home() {
       dataPrevistaFaturamento: formCompra.dataPrevistaFaturamento,
     };
 
-    await saveCompra(payload);
-    await carregarDadosDoBanco();
+    if (editandoCompra) {
+      setCompras(compras.map(c => c.id === compraAtualizada.id ? compraAtualizada : c));
+    } else {
+      setCompras([...compras, compraAtualizada]);
+    }
     cancelarEdicaoCompra();
-    setIsLoading(false);
   };
 
-  const handleRemoverCompra = async (id: string) => {
+  const removerCompra = (id: string) => {
     if (confirm("Tem certeza que deseja remover esta compra?")) {
-      setIsLoading(true);
-      await deleteCompra(id);
-      await carregarDadosDoBanco();
-      setIsLoading(false);
+      setCompras(compras.filter(c => c.id !== id));
     }
   };
 
   // Funções de planejamento (checklist)
   const checklistMesAtualPlanejamento = checklistFornecedores.filter(item => item.mes === mesAtual);
 
-  const toggleFornecedorChecklist = async (fornecedorId: string) => {
-    const mesAtualCheck = new Date().toISOString().slice(0, 7);
-    const itemExistente = checklistFornecedores.find(item => item.fornecedorId === fornecedorId && item.mes === mesAtualCheck);
-    
-    // Atualização Otimista (Visual)
-    const novoStatus = !itemExistente?.comprado;
-    const novosItens = [...checklistFornecedores];
+  const toggleFornecedorChecklist = (fornecedorId: string) => {
+    const itemExistente = checklistMesAtualPlanejamento.find(item => item.fornecedorId === fornecedorId);
     
     if (itemExistente) {
-        const index = novosItens.findIndex(i => i === itemExistente);
-        novosItens[index] = { ...itemExistente, comprado: novoStatus, compraId: !novoStatus ? null : itemExistente.compraId };
+      // Se já existe, apenas alterna o estado comprado
+      const mesAtualCheck = new Date().toISOString().slice(0, 7);
+      setChecklistFornecedores(checklistFornecedores.map(item => 
+        item.fornecedorId === fornecedorId && item.mes === mesAtualCheck
+          ? { ...item, comprado: !item.comprado, compraId: !item.comprado ? item.compraId : null }
+          : item
+      ));
     } else {
-        novosItens.push({ fornecedorId, mes: mesAtualCheck, comprado: true, compraId: null, observacao: "" });
-    }
-    setChecklistFornecedores(novosItens);
-
-    // Salvar no Banco
-    await saveChecklistItem({
+      // Se não existe, cria novo item
+      const mesAtualCheck = new Date().toISOString().slice(0, 7);
+      const novoItem: ChecklistFornecedor = {
         fornecedorId,
+        comprado: true,
+        compraId: null,
+        observacao: "",
         mes: mesAtualCheck,
-        comprado: novoStatus,
-        compraId: itemExistente?.compraId || null,
-        observacao: itemExistente?.observacao || ""
-    });
+      };
+      setChecklistFornecedores([...checklistFornecedores, novoItem]);
+    }
   };
 
-  const atualizarChecklistFornecedor = async (fornecedorId: string, campo: 'compraId' | 'observacao', valor: string) => {
+  const atualizarChecklistFornecedor = (fornecedorId: string, campo: 'compraId' | 'observacao', valor: string) => {
     const mesAtual = new Date().toISOString().slice(0, 7);
-    
-    // Atualização Local
-    const novosItens = checklistFornecedores.map(item =>
+    setChecklistFornecedores(checklistFornecedores.map(item =>
       item.fornecedorId === fornecedorId && item.mes === mesAtual
         ? { ...item, [campo]: valor }
         : item
-    );
-    setChecklistFornecedores(novosItens);
-
-    // Salvar no Banco (Debounce manual ou salvar direto)
-    const itemAtualizado = novosItens.find(i => i.fornecedorId === fornecedorId && i.mes === mesAtual);
-    if(itemAtualizado) {
-        await saveChecklistItem(itemAtualizado);
-    }
+    ));
   };
 
-  const criarCompraDoPlanejamento = async (fornecedorId: string) => {
+  const criarCompraDoPlanejamento = (fornecedorId: string) => {
     const fornecedor = fornecedores.find(f => f.id === fornecedorId);
     if (!fornecedor) return;
-    setIsLoading(true);
 
-    // 1. Criar a compra zerada
-    const novaCompraPayload = {
-      id: null,
+    const novaCompra: Compra = {
+      id: `compra-${Date.now()}`,
       data: new Date().toISOString().split('T')[0],
       fornecedor: fornecedor.nome,
       descricao: `Compra planejada - ${fornecedor.nome}`,
@@ -364,28 +414,17 @@ export default function Home() {
       condicaoPagamento: "",
       dataPrevistaFaturamento: "",
     };
-
-    // Salvamos a compra primeiro para ter um ID, mas como usamos Server Actions e UUID, 
-    // precisamos recarregar para pegar a última compra ou criar um ID temporário.
-    // Simplificação: Salvamos, recarregamos tudo, pegamos a última compra desse fornecedor.
-    await saveCompra(novaCompraPayload);
-    const comprasAtualizadas = await getCompras(); // Recarrega direto do servidor
-    const ultimaCompra = comprasAtualizadas.find(c => c.fornecedor === fornecedor.nome && c.valor === 0);
     
-    if(ultimaCompra) {
-        // 2. Atualizar o checklist
-        await atualizarChecklistFornecedor(fornecedorId, 'compraId', ultimaCompra.id);
-        
-        // 3. Atualizar estados locais
-        setCompras(comprasAtualizadas);
-        
-        // 4. Ir para edição
-        setAbaAtiva("lancamentos");
-        setTimeout(() => {
-          iniciarEdicaoCompra(ultimaCompra);
-        }, 100);
-    }
-    setIsLoading(false);
+    setCompras([...compras, novaCompra]);
+    
+    // Atualiza o checklist com o ID da nova compra
+    atualizarChecklistFornecedor(fornecedorId, 'compraId', novaCompra.id);
+    
+    // Abre a aba de lançamentos para editar a compra
+    setAbaAtiva("lancamentos");
+    setTimeout(() => {
+      iniciarEdicaoCompra(novaCompra);
+    }, 100);
   };
 
   // Cálculos para dashboard do planejamento
@@ -409,6 +448,15 @@ export default function Home() {
   const formatarData = (data: string) => {
     return new Date(data).toLocaleDateString('pt-BR');
   };
+// --- FUNÇÃO DE SAIR (NOVA) ---
+const handleLogout = () => {
+  if(confirm("Deseja realmente sair?")) {
+    localStorage.removeItem("isAuthenticated");
+    setIsAuthenticated(false);
+    setLoginForm({ usuario: "", senha: "" });
+  }
+};
+
 
   // Função de login
   const handleLogin = (e: React.FormEvent) => {
@@ -487,12 +535,12 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="bg-[#003366] text-white shadow-lg sticky top-0 z-20">
+      <header className="bg-[#003366] text-white shadow-lg">
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-3xl font-bold text-white">Walcle / Hadoli</h1>
-              <p className="text-blue-200 mt-1">ERP de Compras (Online)</p>
+              <p className="text-blue-200 mt-1">ERP de Compras</p>
             </div>
             <div className="flex items-center gap-4 bg-blue-900/50 px-6 py-3 rounded-lg">
               <DollarSign className="w-6 h-6" />
@@ -500,19 +548,26 @@ export default function Home() {
                 <p className="text-sm text-blue-200">Total Gasto</p>
                 <p className="text-2xl font-bold text-white">{formatarValor(totalGasto)}</p>
               </div>
+              <div className="flex items-center gap-4">
+    <div className="bg-blue-900/50 px-6 py-3 rounded-lg">
+        {/* ... código do total gasto que já existe ... */}
+    </div>
+
+    {/* COLE O BOTÃO DE SAIR AQUI EMBAIXO: */}
+    <button 
+        onClick={handleLogout} 
+        className="bg-red-600 hover:bg-red-700 p-3 rounded-lg text-white flex items-center gap-2 font-bold transition"
+    >
+        <LogOut size={20} /> Sair
+    </button>
+</div>
             </div>
           </div>
         </div>
-        {/* Barra de Loading */}
-        {isLoading && (
-            <div className="absolute bottom-0 left-0 w-full h-1 bg-blue-300 overflow-hidden">
-                <div className="h-full bg-yellow-400 animate-pulse w-1/2 mx-auto"></div>
-            </div>
-        )}
       </header>
 
       {/* Navegação */}
-      <nav className="bg-white shadow-md border-b border-gray-200 sticky top-[100px] z-10">
+      <nav className="bg-white shadow-md border-b border-gray-200">
         <div className="container mx-auto px-4">
           <div className="flex gap-1 overflow-x-auto">
             <button
@@ -730,7 +785,7 @@ export default function Home() {
                   </button>
                 )}
               </div>
-              <form onSubmit={salvarCompraDoFormulario} className="space-y-4">
+              <form onSubmit={salvarCompra} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-900 mb-1">
@@ -821,10 +876,9 @@ export default function Home() {
                 </div>
                 <button
                   type="submit"
-                  disabled={isLoading}
-                  className="w-full md:w-auto px-6 py-2 bg-[#003366] text-white rounded-lg hover:bg-[#004080] transition-colors font-medium flex items-center gap-2 justify-center disabled:opacity-50"
+                  className="w-full md:w-auto px-6 py-2 bg-[#003366] text-white rounded-lg hover:bg-[#004080] transition-colors font-medium flex items-center gap-2 justify-center"
                 >
-                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : (editandoCompra ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />)}
+                  {editandoCompra ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                   {editandoCompra ? "Salvar Alteração" : "Adicionar Compra"}
                 </button>
               </form>
@@ -874,7 +928,7 @@ export default function Home() {
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={(e) => { e.stopPropagation(); handleRemoverCompra(compra.id); }}
+                                onClick={(e) => { e.stopPropagation(); removerCompra(compra.id); }}
                                 className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
                                 title="Remover"
                               >
@@ -894,7 +948,7 @@ export default function Home() {
 
         {/* Aba Fornecedores */}
         {abaAtiva === "fornecedores" && (
-          <div className="space-y-8">
+          <div className="space-y-8"> 
             <h2 className="text-3xl font-bold text-gray-900">Fornecedores</h2>
             
             {/* Formulário */}
@@ -957,10 +1011,9 @@ export default function Home() {
                 </div>
                 <button
                   onClick={salvarFornecedor}
-                  disabled={isLoading}
-                  className="w-full md:w-auto px-6 py-2 bg-[#003366] text-white rounded-lg hover:bg-[#004080] transition-colors font-medium flex items-center gap-2 disabled:opacity-50"
+                  className="w-full md:w-auto px-6 py-2 bg-[#003366] text-white rounded-lg hover:bg-[#004080] transition-colors font-medium flex items-center gap-2"
                 >
-                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : (editandoFornecedor ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />)}
+                  {editandoFornecedor ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                   {editandoFornecedor ? "Salvar Alteração" : "Adicionar Fornecedor"}
                 </button>
               </div>
@@ -1003,7 +1056,7 @@ export default function Home() {
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleRemoverFornecedor(fornecedor.id)}
+                            onClick={() => removerFornecedor(fornecedor.id)}
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Remover"
                           >
