@@ -195,27 +195,44 @@ export default function Home() {
 
   const dadosPizza = dadosRanking.map(item => ({ name: item.nome, value: item.total }));
 
+  // --- CORREÇÃO DA EVOLUÇÃO TEMPORAL (EIXO X) ---
   const dadosEvolucaoObj = comprasParaGraficos.reduce((acc: any, compra) => {
-    const data = new Date(compra.data);
+    // Corrige fuso horário adicionando horas para não cair no dia anterior
+    const data = new Date(compra.data + 'T12:00:00');
     let chave: string, ts: number;
     
     if (filtroTempo === "mensal") {
-      chave = data.toLocaleDateString('pt-BR', { month: 'short', day: 'numeric' });
+      // Exibe Dia/Mês (ex: 21/01)
+      chave = data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
       ts = data.getTime();
     } else if (filtroTempo === "semestral") {
-      chave = data.toLocaleDateString('pt-BR', { month: 'long' });
+      // Exibe Nome do Mês (ex: Jan)
+      const nomeMes = data.toLocaleDateString('pt-BR', { month: 'short' });
+      // Capitaliza a primeira letra
+      chave = nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1);
+      // Timestamp do primeiro dia do mês para ordenação
       ts = new Date(data.getFullYear(), data.getMonth(), 1).getTime();
     } else {
-      chave = data.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+      // Exibe Mês/Ano (ex: Jan/26)
+      const nomeMes = data.toLocaleDateString('pt-BR', { month: 'short' });
+      const ano = data.toLocaleDateString('pt-BR', { year: '2-digit' });
+      chave = `${nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)}/${ano}`;
       ts = new Date(data.getFullYear(), data.getMonth(), 1).getTime();
     }
-    if (!acc[chave]) acc[chave] = { total: 0, timestamp: ts };
+    
+    if (!acc[chave]) {
+        acc[chave] = { 
+            periodo: chave, // Essa chave será usada no Eixo X
+            total: 0, 
+            timestamp: ts 
+        };
+    }
     acc[chave].total += compra.valor;
     return acc;
   }, {});
-  const dadosEvolucao = Object.values(dadosEvolucaoObj).sort((a: any, b: any) => a.timestamp - b.timestamp).map((d: any) => ({ periodo: d.key || d.periodo || chaveParaPeriodo(d), total: d.total, ...d }));
 
-  function chaveParaPeriodo(d: any) { return '' }
+  // Ordena cronologicamente e gera o array final
+  const dadosEvolucao = Object.values(dadosEvolucaoObj).sort((a: any, b: any) => a.timestamp - b.timestamp);
 
   // --- DADOS PARA GRÁFICOS NOVOS ---
   const dadosPagamento = comprasParaGraficos.reduce((acc: any, compra) => {
