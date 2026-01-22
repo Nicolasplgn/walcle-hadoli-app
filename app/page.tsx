@@ -156,6 +156,10 @@ export default function Home() {
     const agora = new Date();
     const dataLimite = new Date();
     
+    // Zera a hora para evitar problemas de borda
+    agora.setHours(0,0,0,0);
+    dataLimite.setHours(0,0,0,0);
+    
     if (filtroTempo === "mensal") {
       dataLimite.setMonth(agora.getMonth() - 1);
     } else if (filtroTempo === "semestral") {
@@ -163,7 +167,12 @@ export default function Home() {
     } else if (filtroTempo === "anual") {
       dataLimite.setFullYear(agora.getFullYear() - 1);
     }
-    return comprasArray.filter(c => new Date(c.data) >= dataLimite);
+
+    // Compara usando string para evitar confusão de fuso horário
+    return comprasArray.filter(c => {
+       const dataCompra = new Date(c.data + "T00:00:00");
+       return dataCompra >= dataLimite;
+    });
   };
 
   const mesAtual = new Date().toISOString().slice(0, 7);
@@ -195,44 +204,82 @@ export default function Home() {
 
   const dadosPizza = dadosRanking.map(item => ({ name: item.nome, value: item.total }));
 
-  // --- CORREÇÃO DA EVOLUÇÃO TEMPORAL (EIXO X) ---
-  const dadosEvolucaoObj = comprasParaGraficos.reduce((acc: any, compra) => {
-    // Corrige fuso horário adicionando horas para não cair no dia anterior
-    const data = new Date(compra.data + 'T12:00:00');
-    let chave: string, ts: number;
+  // --- CORREÇÃO DA EVOLUÇÃO TEMPORAL (PREENCHIMENTO DE DIAS VAZIOS) ---
+  const gerarDadosEvolucao = () => {
+    // 1. Agrupar os dados reais em um dicionário
+    const mapaValores: Record<string, number> = {};
+    comprasParaGraficos.forEach(compra => {
+      const [anoStr, mesStr, diaStr] = compra.data.split('-');
+      
+      let chave = "";
+      if (filtroTempo === "mensal") {
+         chave = `${anoStr}-${mesStr}-${diaStr}`; // Chave dia exato YYYY-MM-DD
+      } else {
+         chave = `${anoStr}-${mesStr}`; // Chave mês YYYY-MM
+      }
+
+      if (!mapaValores[chave]) mapaValores[chave] = 0;
+      mapaValores[chave] += compra.valor;
+    });
+
+    // 2. Gerar o intervalo de datas completo (incluindo dias vazios)
+    const dadosCompletos = [];
+    const hoje = new Date();
+    const dataIteracao = new Date();
     
     if (filtroTempo === "mensal") {
-      // Exibe Dia/Mês (ex: 21/01)
-      chave = data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-      ts = data.getTime();
+      dataIteracao.setMonth(hoje.getMonth() - 1);
     } else if (filtroTempo === "semestral") {
-      // Exibe Nome do Mês (ex: Jan)
-      const nomeMes = data.toLocaleDateString('pt-BR', { month: 'short' });
-      // Capitaliza a primeira letra
-      chave = nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1);
-      // Timestamp do primeiro dia do mês para ordenação
-      ts = new Date(data.getFullYear(), data.getMonth(), 1).getTime();
+      dataIteracao.setMonth(hoje.getMonth() - 6);
+      dataIteracao.setDate(1); // Começo do mês
     } else {
-      // Exibe Mês/Ano (ex: Jan/26)
-      const nomeMes = data.toLocaleDateString('pt-BR', { month: 'short' });
-      const ano = data.toLocaleDateString('pt-BR', { year: '2-digit' });
-      chave = `${nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)}/${ano}`;
-      ts = new Date(data.getFullYear(), data.getMonth(), 1).getTime();
+      dataIteracao.setFullYear(hoje.getFullYear() - 1);
+      dataIteracao.setDate(1); // Começo do mês
+    }
+
+    // Loop até hoje
+    while (dataIteracao <= hoje) {
+       const ano = dataIteracao.getFullYear();
+       const mes = String(dataIteracao.getMonth() + 1).padStart(2, '0');
+       const dia = String(dataIteracao.getDate()).padStart(2, '0');
+
+       let chaveLookup = "";
+       let periodoLabel = "";
+
+       if (filtroTempo === "mensal") {
+          // Lógica Dia a Dia
+          chaveLookup = `${ano}-${mes}-${dia}`;
+          periodoLabel = `${dia}/${mes}`;
+          
+          dadosCompletos.push({
+             periodo: periodoLabel,
+             total: mapaValores[chaveLookup] || 0 // Se não tem compra, é 0
+          });
+          
+          // Avança 1 dia
+          dataIteracao.setDate(dataIteracao.getDate() + 1);
+
+       } else {
+          // Lógica Mês a Mês
+          chaveLookup = `${ano}-${mes}`;
+          const nomeMes = dataIteracao.toLocaleDateString('pt-BR', { month: 'short' });
+          const nomeAno = dataIteracao.toLocaleDateString('pt-BR', { year: '2-digit' });
+          periodoLabel = `${nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)}/${nomeAno}`;
+          
+          dadosCompletos.push({
+             periodo: periodoLabel,
+             total: mapaValores[chaveLookup] || 0
+          });
+
+          // Avança 1 mês
+          dataIteracao.setMonth(dataIteracao.getMonth() + 1);
+       }
     }
     
-    if (!acc[chave]) {
-        acc[chave] = { 
-            periodo: chave, // Essa chave será usada no Eixo X
-            total: 0, 
-            timestamp: ts 
-        };
-    }
-    acc[chave].total += compra.valor;
-    return acc;
-  }, {});
+    return dadosCompletos;
+  };
 
-  // Ordena cronologicamente e gera o array final
-  const dadosEvolucao = Object.values(dadosEvolucaoObj).sort((a: any, b: any) => a.timestamp - b.timestamp);
+  const dadosEvolucao = gerarDadosEvolucao();
 
   // --- DADOS PARA GRÁFICOS NOVOS ---
   const dadosPagamento = comprasParaGraficos.reduce((acc: any, compra) => {
@@ -317,7 +364,11 @@ export default function Home() {
   };
 
   const iniciarEdicaoCompra = (c: Compra) => {
-    setFormCompra({ ...c, valor: c.valor.toString() });
+    setFormCompra({ 
+        ...c, 
+        valor: c.valor.toString(),
+        dataPrevistaFaturamento: c.dataPrevistaFaturamento || ""
+    });
     setEditandoCompra(true);
   };
 
@@ -369,7 +420,12 @@ export default function Home() {
   };
 
   const formatarValor = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-  const formatarData = (d: string) => new Date(d).toLocaleDateString('pt-BR');
+  const formatarData = (d: string) => {
+      // Formata data string YYYY-MM-DD para DD/MM/YYYY sem timezone
+      if(!d) return "";
+      const [ano, mes, dia] = d.split('-');
+      return `${dia}/${mes}/${ano}`;
+  };
   const formatarValorTooltip = (value: number | undefined) => (value === undefined || isNaN(value)) ? '' : formatarValor(value);
 
   // --- LOGIN UI ---
@@ -642,7 +698,9 @@ export default function Home() {
                                 {compras.length === 0 && <tr><td colSpan={5} className="p-10 text-center text-gray-400">Nenhum registro encontrado.</td></tr>}
                                 {[...compras].reverse().map(c => (
                                     <tr key={c.id} className="hover:bg-rose-50/30 transition group">
-                                        <td className="p-4 pl-6 text-gray-600">{formatarData(c.data)}</td>
+                                        <td className="p-4 pl-6 text-gray-600">
+                                            {formatarData(c.data)}
+                                        </td>
                                         <td className="p-4 text-black font-bold">{c.fornecedor}</td>
                                         <td className="p-4 text-gray-600">{c.descricao}</td>
                                         <td className="p-4 text-right font-bold text-rose-500">{formatarValor(c.valor)}</td>
