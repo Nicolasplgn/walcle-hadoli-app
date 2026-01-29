@@ -65,9 +65,15 @@ export default function Home() {
   const [compras, setCompras] = useState<Compra[]>([]);
   const [checklistFornecedores, setChecklistFornecedores] = useState<ChecklistFornecedor[]>([]);
   
+  // --- ESTADOS DE FILTRO ---
+  // Mês Global: Controla a "Data Atual" do sistema inteiro
+  const [mesGlobal, setMesGlobal] = useState<string>(new Date().toISOString().slice(0, 7));
+  
+  // Filtros internos do Dashboard
   const [filtroTempo, setFiltroTempo] = useState<FiltroTempo>("mensal");
   const [filtroFornecedor, setFiltroFornecedor] = useState<string>("todos");
   
+  // Forms
   const [formFornecedor, setFormFornecedor] = useState({
     id: "",
     nome: "",
@@ -147,54 +153,55 @@ export default function Home() {
     alert("Lista de fornecedores restaurada!");
   };
 
-  // --- CÁLCULOS GERAIS ---
-  const comprasFiltradas = filtroFornecedor === "todos"
-    ? compras
-    : compras.filter(c => c.fornecedor === filtroFornecedor);
+  // --- LÓGICA DE DADOS ---
 
-  const aplicarFiltroTempo = (comprasArray: Compra[]) => {
-    const agora = new Date();
-    const dataLimite = new Date();
+  // 1. Dados para ABA LANÇAMENTOS (Estritos do mês selecionado)
+  const comprasDoMesGlobal = compras.filter(c => c.data.startsWith(mesGlobal));
+  
+  // 2. Dados para ABA DASHBOARD (Dependem do filtroTempo + mesGlobal como âncora)
+  const getComprasDashboard = () => {
+    const [anoStr, mesStr] = mesGlobal.split('-');
+    const ano = parseInt(anoStr);
+    const mes = parseInt(mesStr);
     
-    // Zera a hora para evitar problemas de borda
-    agora.setHours(0,0,0,0);
-    dataLimite.setHours(0,0,0,0);
+    // A data limite final é o último dia do mês selecionado
+    const dataFim = new Date(ano, mes, 0); // Dia 0 do próximo mês = último dia deste
+    dataFim.setHours(23, 59, 59, 999);
+
+    const dataInicio = new Date(dataFim);
     
     if (filtroTempo === "mensal") {
-      dataLimite.setMonth(agora.getMonth() - 1);
+        dataInicio.setDate(1); // Dia 1 do mês selecionado
     } else if (filtroTempo === "semestral") {
-      dataLimite.setMonth(agora.getMonth() - 6);
+        dataInicio.setMonth(dataInicio.getMonth() - 5); // 6 meses atrás
+        dataInicio.setDate(1);
     } else if (filtroTempo === "anual") {
-      dataLimite.setFullYear(agora.getFullYear() - 1);
+        dataInicio.setFullYear(dataInicio.getFullYear() - 1); // 1 ano atrás
+        dataInicio.setDate(1);
     }
 
-    // Compara usando string para evitar confusão de fuso horário
-    return comprasArray.filter(c => {
-       const dataCompra = new Date(c.data + "T00:00:00");
-       return dataCompra >= dataLimite;
+    return compras.filter(c => {
+       const [cAno, cMes, cDia] = c.data.split('-').map(Number);
+       const dataCompra = new Date(cAno, cMes - 1, cDia);
+       
+       const pass = dataCompra >= dataInicio && dataCompra <= dataFim;
+       
+       if (!pass) return false;
+       if (filtroFornecedor !== "todos" && c.fornecedor !== filtroFornecedor) return false;
+       return true;
     });
   };
 
-  const mesAtual = new Date().toISOString().slice(0, 7);
-  const checklistMesAtual = checklistFornecedores.filter(item => item.mes === mesAtual);
-  
-  const comprasDoPlanejamento = checklistMesAtual
-    .filter(item => item.comprado && item.compraId)
-    .map(item => compras.find(c => c.id === item.compraId))
-    .filter((c): c is Compra => c !== undefined);
-  
-  const comprasParaDashboard = [
-    ...comprasFiltradas, 
-    ...comprasDoPlanejamento.filter(c => !comprasFiltradas.some(cf => cf.id === c.id) && (filtroFornecedor === "todos" || c.fornecedor === filtroFornecedor))
-  ];
-  
-  const comprasParaGraficos = aplicarFiltroTempo(comprasParaDashboard);
-  const totalGasto = comprasParaDashboard.reduce((acc, compra) => acc + compra.valor, 0);
+  const comprasDashboard = getComprasDashboard();
+  const totalGastoDashboard = comprasDashboard.reduce((acc, c) => acc + c.valor, 0);
 
-  // --- DADOS PARA GRÁFICOS DO DASHBOARD ---
+  // 3. Dados para ABA PLANEJAMENTO
+  const checklistDoMesGlobal = checklistFornecedores.filter(item => item.mes === mesGlobal);
+
+  // --- PREPARAÇÃO GRÁFICOS DASHBOARD ---
   const dadosRanking = fornecedores
     .map(fornecedor => {
-      const total = comprasParaGraficos
+      const total = comprasDashboard
         .filter(c => c.fornecedor === fornecedor.nome)
         .reduce((acc, c) => acc + c.valor, 0);
       return { nome: fornecedor.nome, total };
@@ -204,85 +211,68 @@ export default function Home() {
 
   const dadosPizza = dadosRanking.map(item => ({ name: item.nome, value: item.total }));
 
-  // --- CORREÇÃO DA EVOLUÇÃO TEMPORAL (PREENCHIMENTO DE DIAS VAZIOS) ---
+  // Gráfico Evolução (COM PREENCHIMENTO DE ZEROS)
   const gerarDadosEvolucao = () => {
-    // 1. Agrupar os dados reais em um dicionário
     const mapaValores: Record<string, number> = {};
-    comprasParaGraficos.forEach(compra => {
-      const [anoStr, mesStr, diaStr] = compra.data.split('-');
-      
-      let chave = "";
-      if (filtroTempo === "mensal") {
-         chave = `${anoStr}-${mesStr}-${diaStr}`; // Chave dia exato YYYY-MM-DD
-      } else {
-         chave = `${anoStr}-${mesStr}`; // Chave mês YYYY-MM
-      }
-
-      if (!mapaValores[chave]) mapaValores[chave] = 0;
-      mapaValores[chave] += compra.valor;
+    comprasDashboard.forEach(c => {
+       // Se for mensal, agrupa por dia. Se for longo prazo, agrupa por mês.
+       let chave = c.data; // YYYY-MM-DD
+       if (filtroTempo !== "mensal") {
+          chave = c.data.slice(0, 7); // YYYY-MM
+       }
+       if (!mapaValores[chave]) mapaValores[chave] = 0;
+       mapaValores[chave] += c.valor;
     });
 
-    // 2. Gerar o intervalo de datas completo (incluindo dias vazios)
-    const dadosCompletos = [];
-    const hoje = new Date();
-    const dataIteracao = new Date();
+    const [anoStr, mesStr] = mesGlobal.split('-');
+    const ano = parseInt(anoStr);
+    const mes = parseInt(mesStr);
+    const dataFim = new Date(ano, mes, 0);
     
+    const dados = [];
+    const iterador = new Date(dataFim);
+    
+    // Define inicio do loop
     if (filtroTempo === "mensal") {
-      dataIteracao.setMonth(hoje.getMonth() - 1);
+        iterador.setDate(1);
     } else if (filtroTempo === "semestral") {
-      dataIteracao.setMonth(hoje.getMonth() - 6);
-      dataIteracao.setDate(1); // Começo do mês
+        iterador.setMonth(iterador.getMonth() - 5);
+        iterador.setDate(1);
     } else {
-      dataIteracao.setFullYear(hoje.getFullYear() - 1);
-      dataIteracao.setDate(1); // Começo do mês
+        iterador.setFullYear(iterador.getFullYear() - 1);
+        iterador.setDate(1);
     }
 
-    // Loop até hoje
-    while (dataIteracao <= hoje) {
-       const ano = dataIteracao.getFullYear();
-       const mes = String(dataIteracao.getMonth() + 1).padStart(2, '0');
-       const dia = String(dataIteracao.getDate()).padStart(2, '0');
+    // Loop até a data fim
+    while (iterador <= dataFim) {
+        const iAno = iterador.getFullYear();
+        const iMes = String(iterador.getMonth() + 1).padStart(2, '0');
+        const iDia = String(iterador.getDate()).padStart(2, '0');
+        
+        let chaveLookup = "";
+        let label = "";
 
-       let chaveLookup = "";
-       let periodoLabel = "";
-
-       if (filtroTempo === "mensal") {
-          // Lógica Dia a Dia
-          chaveLookup = `${ano}-${mes}-${dia}`;
-          periodoLabel = `${dia}/${mes}`;
-          
-          dadosCompletos.push({
-             periodo: periodoLabel,
-             total: mapaValores[chaveLookup] || 0 // Se não tem compra, é 0
-          });
-          
-          // Avança 1 dia
-          dataIteracao.setDate(dataIteracao.getDate() + 1);
-
-       } else {
-          // Lógica Mês a Mês
-          chaveLookup = `${ano}-${mes}`;
-          const nomeMes = dataIteracao.toLocaleDateString('pt-BR', { month: 'short' });
-          const nomeAno = dataIteracao.toLocaleDateString('pt-BR', { year: '2-digit' });
-          periodoLabel = `${nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)}/${nomeAno}`;
-          
-          dadosCompletos.push({
-             periodo: periodoLabel,
-             total: mapaValores[chaveLookup] || 0
-          });
-
-          // Avança 1 mês
-          dataIteracao.setMonth(dataIteracao.getMonth() + 1);
-       }
+        if (filtroTempo === "mensal") {
+            chaveLookup = `${iAno}-${iMes}-${iDia}`;
+            label = `${iDia}/${iMes}`;
+            dados.push({ periodo: label, total: mapaValores[chaveLookup] || 0 });
+            iterador.setDate(iterador.getDate() + 1);
+        } else {
+            chaveLookup = `${iAno}-${iMes}`;
+            // Formata Jan/26
+            const dateStr = iterador.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+            label = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+            
+            dados.push({ periodo: label, total: mapaValores[chaveLookup] || 0 });
+            iterador.setMonth(iterador.getMonth() + 1);
+        }
     }
-    
-    return dadosCompletos;
+    return dados;
   };
-
   const dadosEvolucao = gerarDadosEvolucao();
 
-  // --- DADOS PARA GRÁFICOS NOVOS ---
-  const dadosPagamento = comprasParaGraficos.reduce((acc: any, compra) => {
+  // Gráfico Pagamento (Lançamentos do Mês apenas)
+  const dadosPagamento = comprasDoMesGlobal.reduce((acc: any, compra) => {
     const tipo = compra.condicaoPagamento || "Não informado";
     if (!acc[tipo]) acc[tipo] = 0;
     acc[tipo] += compra.valor;
@@ -290,17 +280,23 @@ export default function Home() {
   }, {});
   const dadosGraficoPagamento = Object.keys(dadosPagamento).map(key => ({ name: key, value: dadosPagamento[key] }));
 
+  // Top 5 (Geral, base ranking dashboard)
   const dadosTop5Fornecedores = [...dadosRanking].sort((a, b) => b.total - a.total).slice(0, 5);
 
+  // Planejamento
   const metaPlanejamento = fornecedores.length;
-  const realizadoPlanejamento = checklistFornecedores.filter(c => c.mes === mesAtual && c.comprado).length;
+  const realizadoPlanejamento = checklistDoMesGlobal.filter(c => c.comprado).length;
   const dadosPlanejamento = [
     { name: "Realizado", value: realizadoPlanejamento },
     { name: "Pendente", value: metaPlanejamento - realizadoPlanejamento }
   ];
 
+  // --- UTILS ---
+  const formatarValor = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+  const formatarData = (d: string) => { if(!d) return ""; const [ano, mes, dia] = d.split('-'); return `${dia}/${mes}/${ano}`; };
+  const formatarValorTooltip = (value: number | undefined) => (value === undefined || isNaN(value)) ? '' : formatarValor(value);
 
-  // --- AÇÕES DO USUÁRIO ---
+  // --- HANDLERS ---
   const handleSalvarFornecedor = async () => {
     if (!formFornecedor.nome.trim()) return;
     setIsLoading(true);
@@ -364,11 +360,7 @@ export default function Home() {
   };
 
   const iniciarEdicaoCompra = (c: Compra) => {
-    setFormCompra({ 
-        ...c, 
-        valor: c.valor.toString(),
-        dataPrevistaFaturamento: c.dataPrevistaFaturamento || ""
-    });
+    setFormCompra({ ...c, valor: c.valor.toString(), dataPrevistaFaturamento: c.dataPrevistaFaturamento || "" });
     setEditandoCompra(true);
   };
 
@@ -387,22 +379,23 @@ export default function Home() {
   };
 
   const handleToggleChecklist = async (fornecedorId: string) => {
-    const mesAtualCheck = new Date().toISOString().slice(0, 7);
-    const itemExistente = checklistFornecedores.find(item => item.fornecedorId === fornecedorId && item.mes === mesAtualCheck);
+    const itemExistente = checklistDoMesGlobal.find(item => item.fornecedorId === fornecedorId);
     const novoStatus = !itemExistente?.comprado;
     
+    // Atualiza estado local para UI instantânea
     const novosItens = [...checklistFornecedores];
-    if (itemExistente) {
-        const index = novosItens.findIndex(i => i === itemExistente);
-        novosItens[index] = { ...itemExistente, comprado: novoStatus };
+    const indexGlobal = novosItens.findIndex(i => i.fornecedorId === fornecedorId && i.mes === mesGlobal);
+    
+    if (indexGlobal >= 0) {
+        novosItens[indexGlobal] = { ...novosItens[indexGlobal], comprado: novoStatus };
     } else {
-        novosItens.push({ fornecedorId, mes: mesAtualCheck, comprado: true, compraId: null, observacao: "" });
+        novosItens.push({ fornecedorId, mes: mesGlobal, comprado: true, compraId: null, observacao: "" });
     }
     setChecklistFornecedores(novosItens);
 
     await saveChecklistItem({
         fornecedorId,
-        mes: mesAtualCheck,
+        mes: mesGlobal,
         comprado: novoStatus,
         compraId: itemExistente?.compraId || null,
         observacao: itemExistente?.observacao || ""
@@ -413,39 +406,25 @@ export default function Home() {
     const fornecedor = fornecedores.find(f => f.id === fornecedorId);
     if (!fornecedor) return;
     setIsLoading(true);
-    await saveCompra({ id: null, data: new Date().toISOString().split('T')[0], fornecedor: fornecedor.nome, descricao: `Planejado - ${fornecedor.nome}`, valor: 0, condicaoPagamento: "", dataPrevistaFaturamento: "" });
+    
+    // Cria compra no dia 1 do mês selecionado (ou hoje se for o mês atual)
+    const hoje = new Date().toISOString().split('T')[0];
+    const dataCompra = mesGlobal === hoje.slice(0, 7) ? hoje : `${mesGlobal}-01`;
+
+    await saveCompra({ id: null, data: dataCompra, fornecedor: fornecedor.nome, descricao: `Planejado - ${fornecedor.nome}`, valor: 0, condicaoPagamento: "", dataPrevistaFaturamento: "" });
     await carregarDadosDoBanco();
     setIsLoading(false);
-    alert("Compra criada na aba Lançamentos! Edite o valor lá.");
+    alert("Compra criada na aba Lançamentos!");
   };
 
-  const formatarValor = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-  const formatarData = (d: string) => {
-      // Formata data string YYYY-MM-DD para DD/MM/YYYY sem timezone
-      if(!d) return "";
-      const [ano, mes, dia] = d.split('-');
-      return `${dia}/${mes}/${ano}`;
-  };
-  const formatarValorTooltip = (value: number | undefined) => (value === undefined || isNaN(value)) ? '' : formatarValor(value);
-
-  // --- LOGIN UI ---
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center px-4">
         <div className="bg-white p-10 rounded-2xl shadow-xl border border-gray-100 w-full max-w-md">
-          <div className="text-center mb-8">
-             <h1 className="text-4xl font-serif text-rose-400 mb-2 italic" style={{fontFamily: 'serif'}}>Walcle / Hadoli</h1>
-             <p className="text-gray-400 text-sm tracking-widest uppercase">Gestão de Compras</p>
-          </div>
+          <div className="text-center mb-8"><h1 className="text-4xl font-serif text-rose-400 mb-2 italic" style={{fontFamily: 'serif'}}>Walcle / Hadoli</h1><p className="text-gray-400 text-sm tracking-widest uppercase">Gestão de Compras</p></div>
           <form onSubmit={handleLogin} className="space-y-5">
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Usuário</label>
-              <input type="text" value={loginForm.usuario} onChange={e => setLoginForm({...loginForm, usuario: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black focus:ring-2 focus:ring-rose-200 focus:border-rose-400 transition outline-none" placeholder="Digite seu usuário" required />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Senha</label>
-              <input type="password" value={loginForm.senha} onChange={e => setLoginForm({...loginForm, senha: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black focus:ring-2 focus:ring-rose-200 focus:border-rose-400 transition outline-none" placeholder="Digite sua senha" required />
-            </div>
+            <div><label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Usuário</label><input type="text" value={loginForm.usuario} onChange={e => setLoginForm({...loginForm, usuario: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black focus:ring-2 focus:ring-rose-200" required /></div>
+            <div><label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Senha</label><input type="password" value={loginForm.senha} onChange={e => setLoginForm({...loginForm, senha: e.target.value})} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black focus:ring-2 focus:ring-rose-200" required /></div>
             {loginError && <div className="text-rose-500 text-sm bg-rose-50 p-3 rounded-lg border border-rose-100">{loginError}</div>}
             <button type="submit" className="w-full py-4 bg-black text-white rounded-lg font-bold hover:bg-gray-900 transition shadow-lg text-sm uppercase tracking-wide">Acessar Sistema</button>
           </form>
@@ -454,34 +433,40 @@ export default function Home() {
     );
   }
 
-  // --- APP PRINCIPAL ---
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans">
-      
-      {/* HEADER */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
-        <div className="container mx-auto px-6 py-4 flex justify-between items-center">
+        <div className="container mx-auto px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-3">
              <h1 className="text-3xl font-serif text-rose-400 italic tracking-tight" style={{fontFamily: 'serif'}}>Walcle / Hadoli</h1>
              <span className="hidden md:block w-px h-6 bg-gray-200 mx-2"></span>
              <p className="hidden md:block text-xs text-gray-400 uppercase tracking-widest mt-1">Controle de Compras</p>
           </div>
           
-          <div className="flex items-center gap-6">
-             <div className="text-right hidden md:block">
-               <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">Total Gasto</p>
-               <p className="text-lg font-bold text-gray-900">{formatarValor(totalGasto)}</p>
+          {/* SELETOR GLOBAL DE MÊS */}
+          <div className="flex items-center gap-4 bg-gray-50 p-1.5 rounded-full border border-gray-200 shadow-sm hover:border-rose-200 transition">
+             <div className="flex items-center gap-2 px-3">
+                <Calendar size={16} className="text-rose-400"/>
+                <input 
+                    type="month" 
+                    value={mesGlobal} 
+                    onChange={(e) => setMesGlobal(e.target.value)} 
+                    className="bg-transparent border-none text-sm font-bold text-gray-800 outline-none cursor-pointer uppercase tracking-wide"
+                />
              </div>
-             <button onClick={handleLogout} className="text-gray-400 hover:text-rose-500 transition p-2">
-                <LogOut size={20} />
-             </button>
+             <div className="w-px h-6 bg-gray-200"></div>
+             <div className="px-4 text-right">
+               <p className="text-[9px] text-gray-400 uppercase tracking-widest font-bold">Total no Painel</p>
+               <p className="text-sm font-bold text-gray-900">{formatarValor(totalGastoDashboard)}</p>
+             </div>
           </div>
+
+          <button onClick={handleLogout} className="text-gray-400 hover:text-rose-500 transition p-2"><LogOut size={20} /></button>
         </div>
         {isLoading && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-rose-100 overflow-hidden"><div className="h-full bg-rose-400 animate-pulse w-1/3 mx-auto"></div></div>}
       </header>
 
-      {/* MENU NAVEGAÇÃO */}
-      <div className="bg-white border-b border-gray-100 sticky top-[73px] z-40">
+      <div className="bg-white border-b border-gray-100 sticky top-[80px] z-40">
         <div className="container mx-auto px-6 flex gap-8 overflow-x-auto">
           {[
               { id: "dashboard", label: "Visão Geral", icon: TrendingUp },
@@ -489,24 +474,18 @@ export default function Home() {
               { id: "fornecedores", label: "Fornecedores", icon: Users },
               { id: "planejamento", label: "Planejamento", icon: Target }
           ].map(tab => (
-            <button 
-                key={tab.id} 
-                onClick={() => setAbaAtiva(tab.id as Aba)} 
-                className={`py-4 text-sm font-bold uppercase tracking-wide flex items-center gap-2 border-b-2 transition-all ${abaAtiva === tab.id ? 'border-rose-400 text-black' : 'border-transparent text-gray-400 hover:text-rose-400'}`}
-            >
+            <button key={tab.id} onClick={() => setAbaAtiva(tab.id as Aba)} className={`py-4 text-sm font-bold uppercase tracking-wide flex items-center gap-2 border-b-2 transition-all ${abaAtiva === tab.id ? 'border-rose-400 text-black' : 'border-transparent text-gray-400 hover:text-rose-400'}`}>
               <tab.icon size={16}/> {tab.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* CONTEÚDO */}
       <main className="container mx-auto px-6 py-10 pb-24">
         
         {/* === DASHBOARD === */}
         {abaAtiva === "dashboard" && (
           <div className="space-y-8 animate-in fade-in duration-500">
-            {/* Filtros */}
             <div className="flex justify-between items-center flex-wrap gap-4">
                <h2 className="text-2xl font-light text-black">Resumo de Performance</h2>
                <div className="flex gap-3">
@@ -522,16 +501,15 @@ export default function Home() {
                </div>
             </div>
             
-            {/* Cards de KPI */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition">
                     <p className="text-gray-400 text-xs uppercase font-bold tracking-widest mb-1">Volume de Compras</p>
-                    <p className="text-3xl font-light text-black">{comprasParaGraficos.length}</p>
+                    <p className="text-3xl font-light text-black">{comprasDashboard.length}</p>
                     <div className="h-1 w-10 bg-rose-400 mt-4"></div>
                 </div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition">
                     <p className="text-gray-400 text-xs uppercase font-bold tracking-widest mb-1">Ticket Médio</p>
-                    <p className="text-3xl font-light text-black">{formatarValor(totalGasto / (comprasParaGraficos.length || 1))}</p>
+                    <p className="text-3xl font-light text-black">{formatarValor(totalGastoDashboard / (comprasDashboard.length || 1))}</p>
                     <div className="h-1 w-10 bg-black mt-4"></div>
                 </div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition">
@@ -541,30 +519,20 @@ export default function Home() {
                 </div>
             </div>
             
-            {/* Gráficos */}
             <div className="grid md:grid-cols-2 gap-8">
-              {/* Ranking (BarChart preto) */}
               <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
                 <h3 className="text-lg font-bold text-black mb-6">Ranking de Gastos</h3>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={dadosRanking}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6"/>
-                    <XAxis 
-                        dataKey="nome" 
-                        tick={{fontSize: 11, fill: '#000000', fontWeight: 'bold'}} 
-                        interval={0} angle={-30} textAnchor="end" height={60} axisLine={false} tickLine={false}
-                    />
-                    <YAxis 
-                        tick={{fontSize: 12, fill: '#000000', fontWeight: 'bold'}}
-                        axisLine={false} tickLine={false} 
-                    />
+                    <XAxis dataKey="nome" tick={{fontSize: 11, fill: '#000000', fontWeight: 'bold'}} interval={0} angle={-30} textAnchor="end" height={60} axisLine={false} tickLine={false}/>
+                    <YAxis tick={{fontSize: 12, fill: '#000000', fontWeight: 'bold'}} axisLine={false} tickLine={false} />
                     <Tooltip formatter={formatarValorTooltip} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', color: '#000' }} itemStyle={{color: '#000'}}/>
                     <Bar dataKey="total" fill={HADOLI_BLACK} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* Pizza */}
               <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
                 <h3 className="text-lg font-bold text-black mb-6">Distribuição (%)</h3>
                 <ResponsiveContainer width="100%" height={300}>
@@ -572,7 +540,7 @@ export default function Home() {
                       <Pie 
                         data={dadosPizza} cx="50%" cy="50%" outerRadius={100} 
                         dataKey="value"
-                        label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        label={({ name, percent }: any) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
                         labelLine={true}
                         fill="#8884d8"
                       >
@@ -585,9 +553,8 @@ export default function Home() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Evolução (AreaChart Rosa) */}
               <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 md:col-span-2">
-                <h3 className="text-lg font-bold text-black mb-6">Evolução Temporal</h3>
+                <h3 className="text-lg font-bold text-black mb-6">Evolução Temporal ({mesGlobal})</h3>
                 <ResponsiveContainer width="100%" height={300}>
                   <AreaChart data={dadosEvolucao}>
                     <defs>
@@ -597,24 +564,10 @@ export default function Home() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb"/>
-                    <XAxis 
-                        dataKey="periodo" 
-                        tick={{fontSize: 12, fill: '#000000', fontWeight: 'bold'}}
-                        axisLine={false} tickLine={false} dy={10} 
-                    />
-                    <YAxis 
-                        tick={{fontSize: 12, fill: '#000000', fontWeight: 'bold'}}
-                        axisLine={false} tickLine={false} 
-                    />
+                    <XAxis dataKey="periodo" tick={{fontSize: 12, fill: '#000000', fontWeight: 'bold'}} axisLine={false} tickLine={false} dy={10} />
+                    <YAxis tick={{fontSize: 12, fill: '#000000', fontWeight: 'bold'}} axisLine={false} tickLine={false} />
                     <Tooltip formatter={formatarValorTooltip} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', color: '#000' }} itemStyle={{color: '#000'}} />
-                    <Area 
-                        type="monotone" 
-                        dataKey="total" 
-                        stroke={HADOLI_PINK} 
-                        strokeWidth={3} 
-                        fillOpacity={1} 
-                        fill="url(#colorTotalPink)" 
-                    />
+                    <Area type="monotone" dataKey="total" stroke={HADOLI_PINK} strokeWidth={3} fillOpacity={1} fill="url(#colorTotalPink)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -625,10 +578,8 @@ export default function Home() {
         {/* === ABA LANÇAMENTOS === */}
         {abaAtiva === "lancamentos" && (
           <div className="space-y-8 animate-in fade-in duration-500">
-             
-             {/* Gráfico de Resumo de Pagamentos */}
              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h3 className="text-lg font-bold text-black mb-4 flex items-center gap-2"><CreditCard size={18}/> Gastos por Pagamento</h3>
+                <h3 className="text-lg font-bold text-black mb-4 flex items-center gap-2"><CreditCard size={18}/> Formas de Pagamento ({mesGlobal})</h3>
                 <div className="h-40">
                   <ResponsiveContainer width="100%" height="100%">
                      <BarChart layout="vertical" data={dadosGraficoPagamento}>
@@ -642,7 +593,6 @@ export default function Home() {
              </div>
 
              <div className="grid lg:grid-cols-3 gap-8">
-                {/* Formulário */}
                 <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 h-fit">
                     <h3 className="font-bold text-black mb-6 text-lg flex items-center gap-2">
                         {editandoCompra ? <Edit2 size={20} className="text-rose-400"/> : <Plus size={20} className="text-rose-400"/>}
@@ -686,8 +636,8 @@ export default function Home() {
                 </div>
                 <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                        <span className="font-bold text-gray-700">Histórico Recente</span>
-                        <span className="text-xs bg-white border border-gray-200 px-3 py-1 rounded-full text-gray-600 font-medium">{compras.length} registros</span>
+                        <span className="font-bold text-gray-700">Lançamentos de {mesGlobal}</span>
+                        <span className="text-xs bg-white border border-gray-200 px-3 py-1 rounded-full text-gray-600 font-medium">{comprasDoMesGlobal.length} registros</span>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
@@ -695,12 +645,10 @@ export default function Home() {
                                 <tr><th className="p-4 pl-6 font-bold">Data</th><th className="p-4 font-bold">Fornecedor</th><th className="p-4 font-bold">Descrição</th><th className="p-4 text-right font-bold">Valor</th><th className="p-4 text-center font-bold">Ações</th></tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                                {compras.length === 0 && <tr><td colSpan={5} className="p-10 text-center text-gray-400">Nenhum registro encontrado.</td></tr>}
-                                {[...compras].reverse().map(c => (
+                                {comprasDoMesGlobal.length === 0 && <tr><td colSpan={5} className="p-10 text-center text-gray-400">Nenhum registro encontrado neste mês.</td></tr>}
+                                {[...comprasDoMesGlobal].reverse().map(c => (
                                     <tr key={c.id} className="hover:bg-rose-50/30 transition group">
-                                        <td className="p-4 pl-6 text-gray-600">
-                                            {formatarData(c.data)}
-                                        </td>
+                                        <td className="p-4 pl-6 text-gray-600">{formatarData(c.data)}</td>
                                         <td className="p-4 text-black font-bold">{c.fornecedor}</td>
                                         <td className="p-4 text-gray-600">{c.descricao}</td>
                                         <td className="p-4 text-right font-bold text-rose-500">{formatarValor(c.valor)}</td>
@@ -787,9 +735,9 @@ export default function Home() {
            <div className="space-y-8 animate-in fade-in duration-500">
               <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between relative overflow-hidden">
                 <div className="z-10">
-                    <p className="text-gray-400 text-xs uppercase font-bold tracking-widest mb-1">Status Mensal ({mesAtual})</p>
+                    <p className="text-gray-400 text-xs uppercase font-bold tracking-widest mb-1">Status Mensal ({mesGlobal})</p>
                     <div className="flex items-baseline gap-2">
-                        <p className="text-5xl font-serif italic text-rose-400">{checklistFornecedores.filter(c => c.mes === mesAtual && c.comprado).length}</p>
+                        <p className="text-5xl font-serif italic text-rose-400">{checklistDoMesGlobal.filter(c => c.comprado).length}</p>
                         <p className="text-xl text-gray-300 font-light">/ {fornecedores.length}</p>
                     </div>
                     <p className="text-sm text-gray-500 mt-2">Fornecedores comprados este mês</p>
@@ -811,7 +759,7 @@ export default function Home() {
                  </div>
                  <div className="divide-y divide-gray-50">
                     {fornecedores.map(f => {
-                       const item = checklistFornecedores.find(c => c.fornecedorId === f.id && c.mes === mesAtual);
+                       const item = checklistDoMesGlobal.find(c => c.fornecedorId === f.id);
                        const comprado = item?.comprado || false;
                        return (
                           <div key={f.id} className={`p-5 flex items-center gap-4 transition ${comprado ? 'bg-gray-50' : 'hover:bg-white'}`}>
