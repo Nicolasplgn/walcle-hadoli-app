@@ -7,13 +7,15 @@ import {
 } from "recharts";
 import { 
   ShoppingCart, DollarSign, Users, TrendingUp, Plus, Trash2, Edit2, Save, X, 
-  Target, Lock, Loader2, LogOut, RefreshCcw, CheckSquare, Calendar, CreditCard 
+  Target, Lock, Loader2, LogOut, RefreshCcw, CheckSquare, Calendar, CreditCard,
+  Package, PackageCheck, Truck, AlertCircle
 } from "lucide-react";
 
 import { 
   getFornecedores, saveFornecedor, deleteFornecedor, 
   getCompras, saveCompra, deleteCompra, 
-  getChecklist, saveChecklistItem, restaurarFornecedoresPadrao 
+  getChecklist, saveChecklistItem, restaurarFornecedoresPadrao,
+  toggleStatusEntrega
 } from "./actions";
 
 // --- INTERFACES ---
@@ -25,6 +27,7 @@ interface Compra {
   valor: number;
   condicaoPagamento: string;
   dataPrevistaFaturamento: string;
+  entregue: boolean;
 }
 
 interface Fornecedor {
@@ -66,10 +69,7 @@ export default function Home() {
   const [checklistFornecedores, setChecklistFornecedores] = useState<ChecklistFornecedor[]>([]);
   
   // --- ESTADOS DE FILTRO ---
-  // Mês Global: Controla a "Data Atual" do sistema inteiro
   const [mesGlobal, setMesGlobal] = useState<string>(new Date().toISOString().slice(0, 7));
-  
-  // Filtros internos do Dashboard
   const [filtroTempo, setFiltroTempo] = useState<FiltroTempo>("mensal");
   const [filtroFornecedor, setFiltroFornecedor] = useState<string>("todos");
   
@@ -155,28 +155,27 @@ export default function Home() {
 
   // --- LÓGICA DE DADOS ---
 
-  // 1. Dados para ABA LANÇAMENTOS (Estritos do mês selecionado)
+  // 1. Dados para ABA LANÇAMENTOS
   const comprasDoMesGlobal = compras.filter(c => c.data.startsWith(mesGlobal));
   
-  // 2. Dados para ABA DASHBOARD (Dependem do filtroTempo + mesGlobal como âncora)
+  // 2. Dados para ABA DASHBOARD
   const getComprasDashboard = () => {
     const [anoStr, mesStr] = mesGlobal.split('-');
     const ano = parseInt(anoStr);
     const mes = parseInt(mesStr);
     
-    // A data limite final é o último dia do mês selecionado
-    const dataFim = new Date(ano, mes, 0); // Dia 0 do próximo mês = último dia deste
+    const dataFim = new Date(ano, mes, 0); 
     dataFim.setHours(23, 59, 59, 999);
 
     const dataInicio = new Date(dataFim);
     
     if (filtroTempo === "mensal") {
-        dataInicio.setDate(1); // Dia 1 do mês selecionado
+        dataInicio.setDate(1); 
     } else if (filtroTempo === "semestral") {
-        dataInicio.setMonth(dataInicio.getMonth() - 5); // 6 meses atrás
+        dataInicio.setMonth(dataInicio.getMonth() - 5); 
         dataInicio.setDate(1);
     } else if (filtroTempo === "anual") {
-        dataInicio.setFullYear(dataInicio.getFullYear() - 1); // 1 ano atrás
+        dataInicio.setFullYear(dataInicio.getFullYear() - 1); 
         dataInicio.setDate(1);
     }
 
@@ -198,7 +197,7 @@ export default function Home() {
   // 3. Dados para ABA PLANEJAMENTO
   const checklistDoMesGlobal = checklistFornecedores.filter(item => item.mes === mesGlobal);
 
-  // --- PREPARAÇÃO GRÁFICOS DASHBOARD ---
+  // --- GRÁFICOS ---
   const dadosRanking = fornecedores
     .map(fornecedor => {
       const total = comprasDashboard
@@ -211,14 +210,12 @@ export default function Home() {
 
   const dadosPizza = dadosRanking.map(item => ({ name: item.nome, value: item.total }));
 
-  // Gráfico Evolução (COM PREENCHIMENTO DE ZEROS)
   const gerarDadosEvolucao = () => {
     const mapaValores: Record<string, number> = {};
     comprasDashboard.forEach(c => {
-       // Se for mensal, agrupa por dia. Se for longo prazo, agrupa por mês.
-       let chave = c.data; // YYYY-MM-DD
+       let chave = c.data;
        if (filtroTempo !== "mensal") {
-          chave = c.data.slice(0, 7); // YYYY-MM
+          chave = c.data.slice(0, 7);
        }
        if (!mapaValores[chave]) mapaValores[chave] = 0;
        mapaValores[chave] += c.valor;
@@ -232,7 +229,6 @@ export default function Home() {
     const dados = [];
     const iterador = new Date(dataFim);
     
-    // Define inicio do loop
     if (filtroTempo === "mensal") {
         iterador.setDate(1);
     } else if (filtroTempo === "semestral") {
@@ -243,7 +239,6 @@ export default function Home() {
         iterador.setDate(1);
     }
 
-    // Loop até a data fim
     while (iterador <= dataFim) {
         const iAno = iterador.getFullYear();
         const iMes = String(iterador.getMonth() + 1).padStart(2, '0');
@@ -259,7 +254,6 @@ export default function Home() {
             iterador.setDate(iterador.getDate() + 1);
         } else {
             chaveLookup = `${iAno}-${iMes}`;
-            // Formata Jan/26
             const dateStr = iterador.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
             label = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
             
@@ -271,7 +265,6 @@ export default function Home() {
   };
   const dadosEvolucao = gerarDadosEvolucao();
 
-  // Gráfico Pagamento (Lançamentos do Mês apenas)
   const dadosPagamento = comprasDoMesGlobal.reduce((acc: any, compra) => {
     const tipo = compra.condicaoPagamento || "Não informado";
     if (!acc[tipo]) acc[tipo] = 0;
@@ -280,10 +273,8 @@ export default function Home() {
   }, {});
   const dadosGraficoPagamento = Object.keys(dadosPagamento).map(key => ({ name: key, value: dadosPagamento[key] }));
 
-  // Top 5 (Geral, base ranking dashboard)
   const dadosTop5Fornecedores = [...dadosRanking].sort((a, b) => b.total - a.total).slice(0, 5);
 
-  // Planejamento
   const metaPlanejamento = fornecedores.length;
   const realizadoPlanejamento = checklistDoMesGlobal.filter(c => c.comprado).length;
   const dadosPlanejamento = [
@@ -378,11 +369,18 @@ export default function Home() {
     }
   };
 
+  const handleToggleEntrega = async (c: Compra) => {
+    const novoStatus = !c.entregue;
+    const novasCompras = compras.map(item => item.id === c.id ? { ...item, entregue: novoStatus } : item);
+    setCompras(novasCompras);
+    await toggleStatusEntrega(c.id, novoStatus);
+    await carregarDadosDoBanco();
+  };
+
   const handleToggleChecklist = async (fornecedorId: string) => {
     const itemExistente = checklistDoMesGlobal.find(item => item.fornecedorId === fornecedorId);
     const novoStatus = !itemExistente?.comprado;
     
-    // Atualiza estado local para UI instantânea
     const novosItens = [...checklistFornecedores];
     const indexGlobal = novosItens.findIndex(i => i.fornecedorId === fornecedorId && i.mes === mesGlobal);
     
@@ -407,7 +405,6 @@ export default function Home() {
     if (!fornecedor) return;
     setIsLoading(true);
     
-    // Cria compra no dia 1 do mês selecionado (ou hoje se for o mês atual)
     const hoje = new Date().toISOString().split('T')[0];
     const dataCompra = mesGlobal === hoje.slice(0, 7) ? hoje : `${mesGlobal}-01`;
 
@@ -642,7 +639,13 @@ export default function Home() {
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
                             <thead className="bg-white text-gray-400 uppercase text-[10px] tracking-wider border-b border-gray-100">
-                                <tr><th className="p-4 pl-6 font-bold">Data</th><th className="p-4 font-bold">Fornecedor</th><th className="p-4 font-bold">Descrição</th><th className="p-4 text-right font-bold">Valor</th><th className="p-4 text-center font-bold">Ações</th></tr>
+                                <tr>
+                                    <th className="p-4 pl-6 font-bold">Data</th>
+                                    <th className="p-4 font-bold">Fornecedor</th>
+                                    <th className="p-4 font-bold">Descrição</th>
+                                    <th className="p-4 text-right font-bold">Valor</th>
+                                    <th className="p-4 text-center font-bold">Ações</th>
+                                </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
                                 {comprasDoMesGlobal.length === 0 && <tr><td colSpan={5} className="p-10 text-center text-gray-400">Nenhum registro encontrado neste mês.</td></tr>}
@@ -730,17 +733,19 @@ export default function Home() {
            </div>
         )}
 
-        {/* === ABA PLANEJAMENTO === */}
+        {/* === ABA PLANEJAMENTO (NOVO LAYOUT: DUAS COLUNAS) === */}
         {abaAtiva === "planejamento" && (
            <div className="space-y-8 animate-in fade-in duration-500">
+              
+              {/* Gráfico de Status do Mês */}
               <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between relative overflow-hidden">
                 <div className="z-10">
-                    <p className="text-gray-400 text-xs uppercase font-bold tracking-widest mb-1">Status Mensal ({mesGlobal})</p>
+                    <p className="text-gray-400 text-xs uppercase font-bold tracking-widest mb-1">Planejamento: {mesGlobal}</p>
                     <div className="flex items-baseline gap-2">
                         <p className="text-5xl font-serif italic text-rose-400">{checklistDoMesGlobal.filter(c => c.comprado).length}</p>
                         <p className="text-xl text-gray-300 font-light">/ {fornecedores.length}</p>
                     </div>
-                    <p className="text-sm text-gray-500 mt-2">Fornecedores comprados este mês</p>
+                    <p className="text-sm text-gray-500 mt-2">Compras realizadas</p>
                 </div>
                 <div className="h-32 w-32">
                      <ResponsiveContainer width="100%" height="100%">
@@ -753,37 +758,92 @@ export default function Home() {
                      </ResponsiveContainer>
                 </div>
               </div>
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                 <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                     <h3 className="font-bold text-gray-800 flex items-center gap-2"><CheckSquare size={18} className="text-rose-400"/> Checklist de Compras</h3>
-                 </div>
-                 <div className="divide-y divide-gray-50">
-                    {fornecedores.map(f => {
-                       const item = checklistDoMesGlobal.find(c => c.fornecedorId === f.id);
-                       const comprado = item?.comprado || false;
-                       return (
-                          <div key={f.id} className={`p-5 flex items-center gap-4 transition ${comprado ? 'bg-gray-50' : 'hover:bg-white'}`}>
-                             <button 
-                                onClick={() => handleToggleChecklist(f.id)} 
-                                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition ${comprado ? 'bg-rose-400 border-rose-400 text-white' : 'border-gray-300 text-transparent hover:border-rose-300'}`}
-                             >
-                                <CheckSquare size={14} fill="currentColor" />
-                             </button>
-                             <div className="flex-1 flex justify-between items-center">
-                                <div>
-                                   <span className={`font-bold text-sm ${comprado ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{f.nome}</span>
-                                   <p className="text-xs text-gray-400 mt-0.5">{comprado ? "Concluído" : "Pendente"}</p>
-                                </div>
-                                {!comprado && (
-                                   <button onClick={() => criarCompraDoPlanejamento(f.id)} className="text-xs bg-black hover:bg-gray-800 text-white px-4 py-2 rounded-full font-bold transition shadow-md">
-                                       Gerar Pedido
-                                   </button>
-                                )}
-                             </div>
-                          </div>
-                       )
-                    })}
-                 </div>
+
+              {/* GRID DUPLO: ESQUERDA (CHECKLIST COMPRA) | DIREITA (RECEBIMENTO) */}
+              <div className="grid md:grid-cols-2 gap-8">
+                  
+                  {/* COLUNA 1: CHECKLIST DE COMPRAS (PEDIR) */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-fit">
+                     <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+                         <h3 className="font-bold text-gray-800 flex items-center gap-2"><ShoppingCart size={18} className="text-black"/> Checklist de Compras</h3>
+                     </div>
+                     <div className="divide-y divide-gray-50">
+                        {fornecedores.map(f => {
+                           const item = checklistDoMesGlobal.find(c => c.fornecedorId === f.id);
+                           const comprado = item?.comprado || false;
+                           
+                           return (
+                              <div key={f.id} className={`p-5 flex items-center gap-4 transition ${comprado ? 'bg-gray-50 opacity-60' : 'hover:bg-white'}`}>
+                                 <button 
+                                    onClick={() => handleToggleChecklist(f.id)} 
+                                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition ${comprado ? 'bg-black border-black text-white' : 'border-gray-300 text-transparent hover:border-black'}`}
+                                 >
+                                    <CheckSquare size={14} fill="currentColor" />
+                                 </button>
+                                 <div className="flex-1 flex justify-between items-center">
+                                    <span className={`font-bold text-sm ${comprado ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{f.nome}</span>
+                                    
+                                    {!comprado && (
+                                       <button onClick={() => criarCompraDoPlanejamento(f.id)} className="text-[10px] uppercase font-bold tracking-wider bg-black hover:bg-gray-800 text-white px-3 py-1.5 rounded-full transition shadow-md">
+                                           Gerar Pedido
+                                       </button>
+                                    )}
+                                 </div>
+                              </div>
+                           )
+                        })}
+                     </div>
+                  </div>
+
+                  {/* COLUNA 2: CONTROLE DE RECEBIMENTO (RECEBER) */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-fit">
+                     <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+                         <h3 className="font-bold text-gray-800 flex items-center gap-2"><Truck size={18} className="text-rose-400"/> Controle de Recebimento</h3>
+                     </div>
+                     <div className="divide-y divide-gray-50">
+                        {/* Filtra apenas os fornecedores que JÁ FORAM COMPRADOS neste mês */}
+                        {fornecedores
+                            .filter(f => checklistDoMesGlobal.find(c => c.fornecedorId === f.id)?.comprado)
+                            .map(f => {
+                               // Busca a compra real lançada para verificar o status de entrega
+                               const compraAssociada = comprasDoMesGlobal.find(c => c.fornecedor === f.nome);
+                               const entregue = compraAssociada?.entregue || false;
+
+                               return (
+                                  <div key={f.id} className="p-5 flex items-center justify-between gap-4 hover:bg-gray-50/50 transition">
+                                     <span className="font-bold text-sm text-gray-900">{f.nome}</span>
+
+                                     {compraAssociada ? (
+                                         <button 
+                                            onClick={() => handleToggleEntrega(compraAssociada)}
+                                            className={`text-[10px] uppercase font-bold tracking-wider px-3 py-1.5 rounded-full transition shadow-md flex items-center gap-1.5 ${
+                                                entregue 
+                                                ? 'bg-green-100 text-green-700 border border-green-200 hover:bg-green-200' 
+                                                : 'bg-black text-white hover:bg-gray-800'
+                                            }`}
+                                         >
+                                             {entregue ? <PackageCheck size={12}/> : <Package size={12}/>}
+                                             {entregue ? "Recebido" : "Confirmar"}
+                                         </button>
+                                     ) : (
+                                         <span className="text-[10px] text-gray-400 italic">
+                                             Pedido não gerado
+                                         </span>
+                                     )}
+                                  </div>
+                               )
+                            })
+                        }
+                        
+                        {/* Mensagem se nada foi comprado ainda */}
+                        {checklistDoMesGlobal.filter(c => c.comprado).length === 0 && (
+                            <div className="p-8 text-center text-gray-400 text-sm">
+                                Nenhuma compra realizada neste mês ainda.
+                            </div>
+                        )}
+                     </div>
+                  </div>
+
               </div>
            </div>
         )}

@@ -52,7 +52,6 @@ export async function deleteFornecedor(id: string) {
   }
 }
 
-// --- RESTAURAR PADRÃO ---
 export async function restaurarFornecedoresPadrao() {
   const listaInicial = [
     "Delfa", "Zanoti", "Fermoplast", "Modelle", "Águas Cristal",
@@ -77,6 +76,7 @@ export async function restaurarFornecedoresPadrao() {
 export async function getCompras() {
   noStore();
   try {
+    // Agora busca a coluna 'entregue'
     const { rows } = await sql`SELECT * FROM compras ORDER BY data DESC`;
     return rows.map(row => ({
       id: row.id,
@@ -85,7 +85,8 @@ export async function getCompras() {
       descricao: row.descricao,
       valor: Number(row.valor),
       condicaoPagamento: row.condicao_pagamento || "",
-      dataPrevistaFaturamento: row.data_prevista_faturamento ? row.data_prevista_faturamento.toISOString().split('T')[0] : ""
+      dataPrevistaFaturamento: row.data_prevista_faturamento ? row.data_prevista_faturamento.toISOString().split('T')[0] : "",
+      entregue: row.entregue || false // Novo campo
     }));
   } catch (error) {
     return [];
@@ -105,10 +106,21 @@ export async function saveCompra(compra: any) {
       `;
     } else {
       await sql`
-        INSERT INTO compras (data, fornecedor, descricao, valor, condicao_pagamento, data_prevista_faturamento)
-        VALUES (${compra.data}, ${compra.fornecedor}, ${compra.descricao}, ${compra.valor}, ${compra.condicaoPagamento}, ${dataFaturamento})
+        INSERT INTO compras (data, fornecedor, descricao, valor, condicao_pagamento, data_prevista_faturamento, entregue)
+        VALUES (${compra.data}, ${compra.fornecedor}, ${compra.descricao}, ${compra.valor}, ${compra.condicaoPagamento}, ${dataFaturamento}, FALSE)
       `;
     }
+    revalidatePath('/');
+    return { success: true };
+  } catch (error) {
+    return { success: false };
+  }
+}
+
+// NOVA FUNÇÃO: Toggle Status de Entrega
+export async function toggleStatusEntrega(id: string, novoStatus: boolean) {
+  try {
+    await sql`UPDATE compras SET entregue = ${novoStatus} WHERE id = ${id}`;
     revalidatePath('/');
     return { success: true };
   } catch (error) {
