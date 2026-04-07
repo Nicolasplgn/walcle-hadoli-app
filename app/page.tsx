@@ -49,40 +49,40 @@ type Aba = "dashboard" | "lancamentos" | "fornecedores" | "planejamento";
 type FiltroTempo = "mensal" | "semestral" | "anual";
 
 // --- PALETA DE CORES ---
-const COLORS = ['#000000', '#333333', '#fb7185', '#9ca3af', '#4b5563', '#e11d48', '#f43f5e'];
+const COLORS =['#000000', '#333333', '#fb7185', '#9ca3af', '#4b5563', '#e11d48', '#f43f5e'];
 const HADOLI_PINK = "#fb7185"; 
 const HADOLI_BLACK = "#000000";
 const HADOLI_DARK_GRAY = "#374151";
 
-const CATEGORIAS_PADRAO = ["Matéria-prima", "Embalagem", "Serviços", "Equipamentos", "Logística", "Outros"];
+const CATEGORIAS_PADRAO =["Matéria-prima", "Embalagem", "Serviços", "Equipamentos", "Logística", "Outros"];
 const CONDICOES_PAGAMENTO = ["Pix", "Boleto", "Cartão", "Transferência"];
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [loginForm, setLoginForm] = useState({ usuario: "", senha: "" });
-  const [loginError, setLoginError] = useState("");
+  const[loginForm, setLoginForm] = useState({ usuario: "", senha: "" });
+  const[loginError, setLoginError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const [abaAtiva, setAbaAtiva] = useState<Aba>("dashboard");
-  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const[abaAtiva, setAbaAtiva] = useState<Aba>("dashboard");
+  const[fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [compras, setCompras] = useState<Compra[]>([]);
   const [checklistFornecedores, setChecklistFornecedores] = useState<ChecklistFornecedor[]>([]);
   
   // --- ESTADOS DE FILTRO ---
-  const [mesGlobal, setMesGlobal] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [mesGlobal, setMesGlobal] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [filtroTempo, setFiltroTempo] = useState<FiltroTempo>("mensal");
   const [filtroFornecedor, setFiltroFornecedor] = useState<string>("todos");
   
   // Forms
-  const [formFornecedor, setFormFornecedor] = useState({
+  const[formFornecedor, setFormFornecedor] = useState({
     id: "",
     nome: "",
     categorias_fornecidas: [] as string[],
     contato: "",
   });
-  const [editandoFornecedor, setEditandoFornecedor] = useState(false);
+  const[editandoFornecedor, setEditandoFornecedor] = useState(false);
   
-  const [formCompra, setFormCompra] = useState({
+  const[formCompra, setFormCompra] = useState({
     id: "",
     data: new Date().toISOString().split('T')[0],
     fornecedor: "",
@@ -91,20 +91,20 @@ export default function Home() {
     condicaoPagamento: "",
     dataPrevistaFaturamento: "",
   });
-  const [editandoCompra, setEditandoCompra] = useState(false);
+  const[editandoCompra, setEditandoCompra] = useState(false);
 
   useEffect(() => {
     const authStatus = localStorage.getItem("isAuthenticated");
     if (authStatus === "true") {
       setIsAuthenticated(true);
     }
-  }, []);
+  },[]);
 
   const carregarDadosDoBanco = async () => {
     if (!isAuthenticated) return;
     setIsLoading(true);
     try {
-      const [dadosFornecedores, dadosCompras, dadosChecklist] = await Promise.all([
+      const[dadosFornecedores, dadosCompras, dadosChecklist] = await Promise.all([
         getFornecedores(),
         getCompras(),
         getChecklist()
@@ -153,41 +153,41 @@ export default function Home() {
     alert("Lista de fornecedores restaurada!");
   };
 
-  // --- LÓGICA DE DADOS ---
+  // --- LÓGICA DE DADOS (CALCULADA MATEMATICAMENTE SEM ERRO DE FUSO) ---
 
-  // 1. Dados para ABA LANÇAMENTOS
+  // 1. Dados para ABA LANÇAMENTOS (Somente o mês global)
   const comprasDoMesGlobal = compras.filter(c => c.data.startsWith(mesGlobal));
   
-  // 2. Dados para ABA DASHBOARD
+  // 2. Dados para ABA DASHBOARD (Aplica o Filtro de Tempo baseando no mesGlobal)
   const getComprasDashboard = () => {
     const [anoStr, mesStr] = mesGlobal.split('-');
-    const ano = parseInt(anoStr);
-    const mes = parseInt(mesStr);
-    
-    const dataFim = new Date(ano, mes, 0); 
-    dataFim.setHours(23, 59, 59, 999);
+    const anoFim = parseInt(anoStr);
+    const mesFim = parseInt(mesStr); // 1 a 12
 
-    const dataInicio = new Date(dataFim);
-    
+    const dataFimNum = anoFim * 100 + mesFim; // Ex: 202604
+    let dataInicioNum = 0;
+
     if (filtroTempo === "mensal") {
-        dataInicio.setDate(1); 
+       dataInicioNum = anoFim * 100 + mesFim; // Apenas o próprio mês
     } else if (filtroTempo === "semestral") {
-        dataInicio.setMonth(dataInicio.getMonth() - 5); 
-        dataInicio.setDate(1);
+       let m = mesFim - 5;
+       let a = anoFim;
+       if (m <= 0) { m += 12; a -= 1; }
+       dataInicioNum = a * 100 + m;
     } else if (filtroTempo === "anual") {
-        dataInicio.setFullYear(dataInicio.getFullYear() - 1); 
-        dataInicio.setDate(1);
+       let m = mesFim - 11;
+       let a = anoFim;
+       if (m <= 0) { m += 12; a -= 1; }
+       dataInicioNum = a * 100 + m;
     }
 
     return compras.filter(c => {
-       const [cAno, cMes, cDia] = c.data.split('-').map(Number);
-       const dataCompra = new Date(cAno, cMes - 1, cDia);
-       
-       const pass = dataCompra >= dataInicio && dataCompra <= dataFim;
-       
-       if (!pass) return false;
        if (filtroFornecedor !== "todos" && c.fornecedor !== filtroFornecedor) return false;
-       return true;
+       
+       const [cAno, cMes] = c.data.split('-').map(Number);
+       const cNum = cAno * 100 + cMes;
+       
+       return cNum >= dataInicioNum && cNum <= dataFimNum;
     });
   };
 
@@ -197,7 +197,7 @@ export default function Home() {
   // 3. Dados para ABA PLANEJAMENTO
   const checklistDoMesGlobal = checklistFornecedores.filter(item => item.mes === mesGlobal);
 
-  // --- GRÁFICOS ---
+  // --- GRÁFICOS DASHBOARD ---
   const dadosRanking = fornecedores
     .map(fornecedor => {
       const total = comprasDashboard
@@ -210,55 +210,55 @@ export default function Home() {
 
   const dadosPizza = dadosRanking.map(item => ({ name: item.nome, value: item.total }));
 
+  // Evolução temporal (Matemática pura para não bugar com dias vazios)
   const gerarDadosEvolucao = () => {
     const mapaValores: Record<string, number> = {};
     comprasDashboard.forEach(c => {
-       let chave = c.data;
+       let chave = c.data; // YYYY-MM-DD
        if (filtroTempo !== "mensal") {
-          chave = c.data.slice(0, 7);
+          chave = c.data.slice(0, 7); // YYYY-MM
        }
        if (!mapaValores[chave]) mapaValores[chave] = 0;
        mapaValores[chave] += c.valor;
     });
 
-    const [anoStr, mesStr] = mesGlobal.split('-');
+    const[anoStr, mesStr] = mesGlobal.split('-');
     const ano = parseInt(anoStr);
     const mes = parseInt(mesStr);
-    const dataFim = new Date(ano, mes, 0);
-    
-    const dados = [];
-    const iterador = new Date(dataFim);
-    
+    const dados =[];
+
     if (filtroTempo === "mensal") {
-        iterador.setDate(1);
-    } else if (filtroTempo === "semestral") {
-        iterador.setMonth(iterador.getMonth() - 5);
-        iterador.setDate(1);
+        // Preenche do dia 1 até o último dia do mês
+        const diasNoMes = new Date(ano, mes, 0).getDate();
+        for (let d = 1; d <= diasNoMes; d++) {
+            const diaFormatado = String(d).padStart(2, '0');
+            const dataChave = `${mesGlobal}-${diaFormatado}`;
+            dados.push({
+                periodo: `${diaFormatado}/${mesStr}`,
+                total: mapaValores[dataChave] || 0
+            });
+        }
     } else {
-        iterador.setFullYear(iterador.getFullYear() - 1);
-        iterador.setDate(1);
-    }
-
-    while (iterador <= dataFim) {
-        const iAno = iterador.getFullYear();
-        const iMes = String(iterador.getMonth() + 1).padStart(2, '0');
-        const iDia = String(iterador.getDate()).padStart(2, '0');
-        
-        let chaveLookup = "";
-        let label = "";
-
-        if (filtroTempo === "mensal") {
-            chaveLookup = `${iAno}-${iMes}-${iDia}`;
-            label = `${iDia}/${iMes}`;
-            dados.push({ periodo: label, total: mapaValores[chaveLookup] || 0 });
-            iterador.setDate(iterador.getDate() + 1);
-        } else {
-            chaveLookup = `${iAno}-${iMes}`;
-            const dateStr = iterador.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
-            label = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+        // Preenche os últimos 6 ou 12 meses
+        const qtdMeses = filtroTempo === "semestral" ? 6 : 12;
+        for (let i = qtdMeses - 1; i >= 0; i--) {
+            let m = mes - i;
+            let a = ano;
+            if (m <= 0) { m += 12; a -= 1; }
             
-            dados.push({ periodo: label, total: mapaValores[chaveLookup] || 0 });
-            iterador.setMonth(iterador.getMonth() + 1);
+            const mesFormatado = String(m).padStart(2, '0');
+            const dataChave = `${a}-${mesFormatado}`;
+
+            // Pega o nome do mês para o label
+            const dateHelper = new Date(a, m - 1, 1);
+            const nomeMes = dateHelper.toLocaleDateString('pt-BR', { month: 'short' });
+            const nomeAno = dateHelper.toLocaleDateString('pt-BR', { year: '2-digit' });
+            const label = `${nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1)}/${nomeAno}`;
+
+            dados.push({
+                periodo: label,
+                total: mapaValores[dataChave] || 0
+            });
         }
     }
     return dados;
@@ -277,14 +277,14 @@ export default function Home() {
 
   const metaPlanejamento = fornecedores.length;
   const realizadoPlanejamento = checklistDoMesGlobal.filter(c => c.comprado).length;
-  const dadosPlanejamento = [
+  const dadosPlanejamento =[
     { name: "Realizado", value: realizadoPlanejamento },
     { name: "Pendente", value: metaPlanejamento - realizadoPlanejamento }
   ];
 
   // --- UTILS ---
   const formatarValor = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-  const formatarData = (d: string) => { if(!d) return ""; const [ano, mes, dia] = d.split('-'); return `${dia}/${mes}/${ano}`; };
+  const formatarData = (d: string) => { if(!d) return ""; const[ano, mes, dia] = d.split('-'); return `${dia}/${mes}/${ano}`; };
   const formatarValorTooltip = (value: number | undefined) => (value === undefined || isNaN(value)) ? '' : formatarValor(value);
 
   // --- HANDLERS ---
@@ -298,7 +298,7 @@ export default function Home() {
         contato: formFornecedor.contato.trim()
     });
     await carregarDadosDoBanco();
-    setFormFornecedor({ id: "", nome: "", categorias_fornecidas: [], contato: "" });
+    setFormFornecedor({ id: "", nome: "", categorias_fornecidas:[], contato: "" });
     setEditandoFornecedor(false);
     setIsLoading(false);
   };
@@ -318,7 +318,7 @@ export default function Home() {
   };
 
   const cancelarEdicaoFornecedor = () => {
-    setFormFornecedor({ id: "", nome: "", categorias_fornecidas: [], contato: "" });
+    setFormFornecedor({ id: "", nome: "", categorias_fornecidas:[], contato: "" });
     setEditandoFornecedor(false);
   };
 
@@ -369,6 +369,7 @@ export default function Home() {
     }
   };
 
+  // HANDLER CORRETO PARA A COLUNA DE ENTREGA DO BANCO
   const handleToggleEntrega = async (c: Compra) => {
     const novoStatus = !c.entregue;
     const novasCompras = compras.map(item => item.id === c.id ? { ...item, entregue: novoStatus } : item);
@@ -432,6 +433,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans">
+      
+      {/* HEADER ORIGINAL */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
         <div className="container mx-auto px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-3">
@@ -463,6 +466,7 @@ export default function Home() {
         {isLoading && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-rose-100 overflow-hidden"><div className="h-full bg-rose-400 animate-pulse w-1/3 mx-auto"></div></div>}
       </header>
 
+      {/* ABAS ORIGINAIS */}
       <div className="bg-white border-b border-gray-100 sticky top-[80px] z-40">
         <div className="container mx-auto px-6 flex gap-8 overflow-x-auto">
           {[
@@ -733,24 +737,23 @@ export default function Home() {
            </div>
         )}
 
-        {/* === ABA PLANEJAMENTO (NOVO LAYOUT: DUAS COLUNAS) === */}
+        {/* === ABA PLANEJAMENTO === */}
         {abaAtiva === "planejamento" && (
            <div className="space-y-8 animate-in fade-in duration-500">
               
-              {/* Gráfico de Status do Mês */}
               <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between relative overflow-hidden">
                 <div className="z-10">
-                    <p className="text-gray-400 text-xs uppercase font-bold tracking-widest mb-1">Planejamento: {mesGlobal}</p>
+                    <p className="text-gray-400 text-xs uppercase font-bold tracking-widest mb-1">Status Mensal ({mesGlobal})</p>
                     <div className="flex items-baseline gap-2">
                         <p className="text-5xl font-serif italic text-rose-400">{checklistDoMesGlobal.filter(c => c.comprado).length}</p>
                         <p className="text-xl text-gray-300 font-light">/ {fornecedores.length}</p>
                     </div>
-                    <p className="text-sm text-gray-500 mt-2">Compras realizadas</p>
+                    <p className="text-sm text-gray-500 mt-2">Fornecedores acionados este mês</p>
                 </div>
                 <div className="h-32 w-32">
                      <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                            <Pie data={dadosPlanejamento} innerRadius={35} outerRadius={50} paddingAngle={5} dataKey="value">
+                            <Pie data={dadosPlanejamento} innerRadius={35} outerRadius={50} paddingAngle={5} dataKey="value" stroke="none">
                                 <Cell fill={HADOLI_PINK} />
                                 <Cell fill="#f3f4f6" />
                             </Pie>
@@ -759,13 +762,11 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* GRID DUPLO: ESQUERDA (CHECKLIST COMPRA) | DIREITA (RECEBIMENTO) */}
-              <div className="grid md:grid-cols-2 gap-8">
-                  
-                  {/* COLUNA 1: CHECKLIST DE COMPRAS (PEDIR) */}
+              <div className="grid lg:grid-cols-2 gap-8">
+                  {/* COLUNA 1: CHECKLIST */}
                   <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-fit">
                      <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                         <h3 className="font-bold text-gray-800 flex items-center gap-2"><ShoppingCart size={18} className="text-black"/> Checklist de Compras</h3>
+                         <h3 className="font-bold text-gray-800 flex items-center gap-2"><ShoppingCart size={18} className="text-black"/> Fazer Pedido</h3>
                      </div>
                      <div className="divide-y divide-gray-50">
                         {fornecedores.map(f => {
@@ -776,7 +777,7 @@ export default function Home() {
                               <div key={f.id} className={`p-5 flex items-center gap-4 transition ${comprado ? 'bg-gray-50 opacity-60' : 'hover:bg-white'}`}>
                                  <button 
                                     onClick={() => handleToggleChecklist(f.id)} 
-                                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition ${comprado ? 'bg-black border-black text-white' : 'border-gray-300 text-transparent hover:border-black'}`}
+                                    className={`w-6 h-6 rounded border-2 flex items-center justify-center transition ${comprado ? 'bg-black border-black text-white' : 'border-gray-300 text-transparent hover:border-black'}`}
                                  >
                                     <CheckSquare size={14} fill="currentColor" />
                                  </button>
@@ -795,23 +796,24 @@ export default function Home() {
                      </div>
                   </div>
 
-                  {/* COLUNA 2: CONTROLE DE RECEBIMENTO (RECEBER) */}
+                  {/* COLUNA 2: RECEBIMENTO CORRETO */}
                   <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-fit">
                      <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                         <h3 className="font-bold text-gray-800 flex items-center gap-2"><Truck size={18} className="text-rose-400"/> Controle de Recebimento</h3>
+                         <h3 className="font-bold text-gray-800 flex items-center gap-2"><Truck size={18} className="text-rose-400"/> Checagem de Entrega</h3>
                      </div>
                      <div className="divide-y divide-gray-50">
-                        {/* Filtra apenas os fornecedores que JÁ FORAM COMPRADOS neste mês */}
                         {fornecedores
                             .filter(f => checklistDoMesGlobal.find(c => c.fornecedorId === f.id)?.comprado)
                             .map(f => {
-                               // Busca a compra real lançada para verificar o status de entrega
                                const compraAssociada = comprasDoMesGlobal.find(c => c.fornecedor === f.nome);
                                const entregue = compraAssociada?.entregue || false;
 
                                return (
                                   <div key={f.id} className="p-5 flex items-center justify-between gap-4 hover:bg-gray-50/50 transition">
-                                     <span className="font-bold text-sm text-gray-900">{f.nome}</span>
+                                     <span className="font-bold text-sm text-gray-900 flex items-center gap-2">
+                                        {entregue ? <div className="w-2 h-2 rounded-full bg-green-500"></div> : <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>}
+                                        {f.nome}
+                                     </span>
 
                                      {compraAssociada ? (
                                          <button 
@@ -835,10 +837,10 @@ export default function Home() {
                             })
                         }
                         
-                        {/* Mensagem se nada foi comprado ainda */}
                         {checklistDoMesGlobal.filter(c => c.comprado).length === 0 && (
-                            <div className="p-8 text-center text-gray-400 text-sm">
-                                Nenhuma compra realizada neste mês ainda.
+                            <div className="p-12 text-center">
+                                <Package className="w-12 h-12 text-gray-200 mx-auto mb-3"/>
+                                <p className="text-gray-400 text-sm font-bold">Nenhum pedido realizado este mês.</p>
                             </div>
                         )}
                      </div>
